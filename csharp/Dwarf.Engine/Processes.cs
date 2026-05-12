@@ -79,4 +79,7 @@ public static class Processes
     public static bool checkForTimeouts() => false;
     public static void reschedule(bool _) { /* Phase C */ }
     public static void idle() { /* Phase C */ }
+
+    // For block-transfer interrupt checks (Ch08). Phase B: no interrupts during tests.
+    public static bool interruptPending() => false;
 }
