@@ -2,7 +2,7 @@
 
 **Current phase**: B (Opcodes + tests)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 + Ch07 done — 416/608 tests passing; Ch06/Ch08/Ch09/Ch10/ChXX/Misc still pending)
+**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 + Ch06 + Ch07 done — 562/608 tests passing; Ch08/Ch09/Ch10/ChXX/Misc still pending)
 
 ## Phase status
 
@@ -27,7 +27,8 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Add `OpcodeDispatchSmokeTest` (5 tests verifying dispatch pipeline end-to-end)
 - [x] Port `Ch05_Stack_Instructions` + tests (193 tests — all pass first try)
 - [x] Port `Ch07_Assignment_Instructions` + tests (212 tests — all pass first try)
-- [ ] Port `Ch06_Jump_Instructions` + tests (~45 tests)          ← next
+- [x] Port `Ch06_Jump_Instructions` + tests (146 tests — all pass first try; Phase B doc estimate of 45 was off)
+- [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)          ← next
 - [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
 - [ ] Port `Ch09_ControlTransfers` (no tests)
 - [ ] Port `Ch10_Processes` (no tests)
@@ -123,3 +124,13 @@ See `02-phase-b-opcodes.md` for details.
 - **`unchecked((int)0xFFFF8000)` pattern** for tests where the Java literal `0xFFFF8000` is signed-int -32768. C# treats `0xFFFF8000` as uint by default; explicit unchecked cast preserves bit-pattern.
 - **`Assert.NotEqual(0, Cpu.LF)`** is the xUnit equivalent of JUnit's `assertNotEquals("LF", 0, Cpu.LF)` (xUnit signature is `(expected, actual)`, no message param).
 - Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) = ~227 of ~256.
+
+### 2026-05-12 (Phase B: Ch06_Jump_Instructions — 146 tests)
+
+- **All 146 Ch06 tests passed first try.** Total: 562/608. Phase B doc estimate of "~45 tests" was off — the actual count is much higher because each jump opcode has 4-10 variant tests (pos/neg disp, eq/ne/lt/gt, small/large operand).
+- Ch06 has ~32 opcodes: unconditional jumps J2-J8, JB/JW/JS/CATCH; equality JZn/JNZn/JZB/JNZB/JEB/JNEB/JDEB/JDNEB/JEP/JNEP/JEBB/JNEBB; signed JLB/JLEB/JGB/JGEB; unsigned JULB/JULEB/JUGB/JUGEB; indexed JIB/JIW.
+- **Signed jumps** (JLB/JLEB/JGB/JGEB) use `(short)Cpu.pop()` casts — same pattern as Ch05's SDIV/NEG. The signed/unsigned distinction matters because `Cpu.pop()` returns ushort; without the explicit cast, comparisons like `j < k` would use unsigned semantics.
+- **`NOJUMP = unchecked((int)0xFFFFFFFF)`** as a test sentinel — Java treats `0xFFFFFFFF` as int -1; C# needs the unchecked cast.
+- **Java test class skips `test_JB_*` methods** (no `@Test` annotation — likely upstream bug). Preserved the omission for behavioral identity; not ported.
+- **`@base` parameter name** — `base` is a C# keyword (referring to the parent class), so verbatim port required the `@` escape in `JIB`/`JIW` opcode bodies.
+- Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) + ~32 (Ch06) = ~259 of ~256 — note this slightly exceeds the prior estimate because the old/new GF variants in Ch07 count double.
