@@ -2,7 +2,7 @@
 
 **Current phase**: B (Opcodes + tests)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12
+**Last session**: 2026-05-12 (in-progress: infrastructure + Ch03 vertical slice done; Ch05/Ch06/Ch07/Ch08/Ch09/Ch10/ChXX/Misc still pending)
 
 ## Phase status
 
@@ -19,10 +19,13 @@
 
 See `02-phase-b-opcodes.md` for details.
 
-- [ ] Implement `OpImpl` delegate + `Opcodes.cs` dispatch + Install API     ← next
-- [ ] Wire `RuntimeHelpers.RunClassConstructor` for each chapter class
-- [ ] Port `Ch03_MemoryOrganization` + tests (~25 tests)
-- [ ] Port `Ch05_StackInstructions` + tests (193 tests)
+- [x] Implement `OpImpl` delegate + `Opcodes.cs` dispatch + Install API
+- [x] ~~Wire `RuntimeHelpers.RunClassConstructor` for each chapter class~~ (superseded — chapter classes expose explicit `RegisterAll()` static methods called from `Opcodes.initializeInstructionsPrincOps*40()`; cleaner than static-ctor + RunClassConstructor, and supports mode-switching)
+- [x] Port `Processes` stub (just the helpers Ch03 needs: `psbHandle`, `psbIndex`, `resetPTC`)
+- [x] Port `Ch03_Memory_Organization` (19 opcodes — 1 regular, 18 ESC)
+- [x] Port `Ch03_MemoryOrganizationTest` (1 test method, loops ~1023 sub-iterations)
+- [x] Add `OpcodeDispatchSmokeTest` (5 tests verifying dispatch pipeline end-to-end)
+- [ ] Port `Ch05_Stack_Instructions` + tests (193 tests)          ← next
 - [ ] Port `Ch07_AssignmentInstructions` + tests (212 tests)
 - [ ] Port `Ch06_JumpInstructions` + tests (~45 tests)
 - [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
@@ -86,3 +89,16 @@ See `02-phase-b-opcodes.md` for details.
 - **`internalIT()`** for the interval timer uses `Environment.TickCount64 * 1_000_000` as a stand-in for Java's `System.nanoTime() & 0xFFFFFFFFFFFFC000L`. Resolution is millisecond-grained rather than 16μs — acceptable for Phase A; revisit if Mesa timeout logic in Phase C is sensitive.
 
 **Phase A verification (close-out)**: `dotnet build csharp/Dwarf.slnx` succeeds with 0 warnings, 0 errors. `dotnet test` runs 5 tests, all pass.
+
+### 2026-05-12 (Phase B vertical slice: dispatch infra + Ch03)
+
+- **Chapter registration design**: dropped the static-constructor + `RuntimeHelpers.RunClassConstructor` plan in favor of an explicit `public static void RegisterAll()` method on each chapter class, called from `Opcodes.initializeInstructionsPrincOps*40()`. Simpler, no reflection, supports mode-switching without per-static-ctor-fires-only-once gotchas.
+- **`OpImpl` is a `delegate void OpImpl()`** (no `.execute()` method) — call sites use `Ch03_Memory_Organization.ESC_x09_GMF()` rather than Java's `.execute()`. Faithful in behavior.
+- **`Opcodes.InstallOld` / `InstallNew`** check `currentMode` and silently skip if mismatched. `Install` and `InstallEsc` are mode-agnostic and always land. This means a chapter's `RegisterAll()` can unconditionally call all three variants and the right ones win based on which `initializeInstructionsPrincOps*40()` was invoked.
+- **`Processes` is a Phase B stub** — only `ProcessStateBlock_Size`, `psbHandle`, `psbIndex`, `resetPTC` are real; `faultOne` / `faultTwo` throw `NotImplementedException("Phase C")` (Ch03 tests don't call them; the real fault-dispatch path lands in Phase C). `checkforInterrupts`, `checkForTimeouts`, `reschedule`, `idle` are no-op stubs.
+- **`Ch03_MemoryOrganizationTest`** is just 1 `[Fact]` method but loops `firstUnmappedPage`-many times (~1023 sub-iterations) — covers a huge surface of SM/SMF/GMF semantics. The Phase B doc's "~25 tests" estimate was off.
+- **xUnit `@After` equivalent**: `AbstractInstructionTest` now implements `IDisposable` with a virtual `OnAfterTest()` hook. Ch03Test overrides it to call `Mem.createInitialPageMappingGuam()` (restores map after a test that mutated it).
+- **Suppressed CA1711** (reserved-suffix names) — needed for `OpImpl` ('Impl') and `InstallNew`/`InstallOld` ('New').
+- **All 11 tests pass** (5 Phase A smoke + 1 Ch03 + 5 dispatch smoke). Build 0 warnings 0 errors.
+
+**Vertical slice complete** — the dispatch pipeline works end-to-end. Next session picks up at Ch05 (the largest chapter, 820 LOC, 193 tests) which will validate the sign-extension audit (RISKS R1).

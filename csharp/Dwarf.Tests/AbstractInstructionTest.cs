@@ -36,8 +36,20 @@ namespace Dwarf.Tests;
 // xUnit creates a new instance of a test class for each test method, so the
 // constructor takes the place of Java's @Before — running prepareCpu() once
 // per test, exactly as the Java suite does.
-public abstract class AbstractInstructionTest
+public abstract class AbstractInstructionTest : IDisposable
 {
+    // xUnit calls Dispose after each test — equivalent to Java's @After.
+    // Subclasses override OnAfterTest for per-test cleanup (e.g., restoring
+    // memory mappings mutated by a SetMap test).
+    public void Dispose()
+    {
+        OnAfterTest();
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void OnAfterTest() { }
+
+
     // Exception thrown in unit tests when a trap or fault occurred.
     public sealed class MesaTrapOrFault : Exception
     {
