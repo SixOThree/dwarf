@@ -2,7 +2,7 @@
 
 **Current phase**: B (Opcodes + tests)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 done — 204/608 tests passing; Ch06/Ch07/Ch08/Ch09/Ch10/ChXX/Misc still pending)
+**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 + Ch07 done — 416/608 tests passing; Ch06/Ch08/Ch09/Ch10/ChXX/Misc still pending)
 
 ## Phase status
 
@@ -26,8 +26,8 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Port `Ch03_MemoryOrganizationTest` (1 test method, loops ~1023 sub-iterations)
 - [x] Add `OpcodeDispatchSmokeTest` (5 tests verifying dispatch pipeline end-to-end)
 - [x] Port `Ch05_Stack_Instructions` + tests (193 tests — all pass first try)
-- [ ] Port `Ch07_Assignment_Instructions` + tests (212 tests)          ← next
-- [ ] Port `Ch06_Jump_Instructions` + tests (~45 tests)
+- [x] Port `Ch07_Assignment_Instructions` + tests (212 tests — all pass first try)
+- [ ] Port `Ch06_Jump_Instructions` + tests (~45 tests)          ← next
 - [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
 - [ ] Port `Ch09_ControlTransfers` (no tests)
 - [ ] Port `Ch10_Processes` (no tests)
@@ -113,3 +113,13 @@ See `02-phase-b-opcodes.md` for details.
 - **`AbstractInstructionTest.mkStack` typo preserved** correctly — `mkStack(33, ..., SP, ...)` tests like `test_REC` pass. The Java bug where `Cpu.SP = newSavedSP` (should be savedSP) doesn't affect Ch05 tests because the typo only hits when both SP *and* savedSP sentinels are present, which Ch05 tests don't do.
 - **Suppressed CA1711** for `OpImpl`. No new analyzer suppressions in this iteration.
 - Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) = 79 of ~256.
+
+### 2026-05-12 (Phase B: Ch07_Assignment_Instructions — 212 tests)
+
+- **All 212 Ch07 tests passed first try.** Total: 416/608.
+- Ch07 is the biggest opcode set (~148 opcodes counting old/new variants): load/store immediate, local frame, global frame (old + new GF), direct pointer, indirect pointer, string, field access. The naming convention preservation paid off — direct grep-correspondence with Java made the port mechanical.
+- **Test data factored into class-level `static readonly int[]` arrays** (`LF_FRAME`, `GF_FRAME`, `FIVE_MEM`, `EIGHT_MEM`, `FOURTEEN_MEM`, `STR_MEM`, `STR_MEM_HBIT`) to avoid repeating ~15-element literals across 100+ tests. Java's inline literals work but C# benefits from named arrays for readability.
+- **One C# literal gotcha hit**: `(short)0x8000` in Java compiles (truncating cast); C# rejects with CS0221 "constant value 32768 cannot be converted to short". Switched to `(ushort)0x8000` in LINI — matches the ushort-stack convention anyway.
+- **`unchecked((int)0xFFFF8000)` pattern** for tests where the Java literal `0xFFFF8000` is signed-int -32768. C# treats `0xFFFF8000` as uint by default; explicit unchecked cast preserves bit-pattern.
+- **`Assert.NotEqual(0, Cpu.LF)`** is the xUnit equivalent of JUnit's `assertNotEquals("LF", 0, Cpu.LF)` (xUnit signature is `(expected, actual)`, no message param).
+- Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) = ~227 of ~256.
