@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
+    <ProjectReference Include="..\Dwarf.Agents\Dwarf.Agents.csproj" />
+    <ProjectReference Include="..\Dwarf.Net\Dwarf.Net.csproj" />
+    <ProjectReference Include="..\Dwarf.UI.Avalonia\Dwarf.UI.Avalonia.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

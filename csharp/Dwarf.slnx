@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="Dwarf.Agents/Dwarf.Agents.csproj" />
+  <Project Path="Dwarf.Cli/Dwarf.Cli.csproj" />
+  <Project Path="Dwarf.Draco/Dwarf.Draco.csproj" />
+  <Project Path="Dwarf.Duchess/Dwarf.Duchess.csproj" />
+  <Project Path="Dwarf.Engine/Dwarf.Engine.csproj" />
+  <Project Path="Dwarf.Iop6085/Dwarf.Iop6085.csproj" />
+  <Project Path="Dwarf.Net/Dwarf.Net.csproj" />
+  <Project Path="Dwarf.Tests/Dwarf.Tests.csproj" />
+  <Project Path="Dwarf.UI.Avalonia/Dwarf.UI.Avalonia.csproj" />
+</Solution>
