@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS1591</WarningsNotAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <DebugType>portable</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <DwarfRepoRoot>$(MSBuildThisFileDirectory)..\</DwarfRepoRoot>
+    <DwarfJavaSourceRoot>$(DwarfRepoRoot)src\dev\hawala\dmachine\</DwarfJavaSourceRoot>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Matthew Dugal (C# port); Dr. Hans-Walter Latz (original Java)</Authors>
+    <Copyright>Original Java work copyright (c) 2017 Dr. Hans-Walter Latz. C# port copyright (c) 2026 Matthew Dugal. Both licensed BSD-3.</Copyright>
+    <RepositoryUrl>https://github.com/SixOThree/dwarf</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>
