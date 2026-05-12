@@ -147,14 +147,14 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 
 ## Sub-tasks
 
-- [ ] Port agent infrastructure: `Agent`, `AgentDevice`, `Agents`, `iNetDeviceInterface`, `NullAgent`, `ReservedAgent`
+- [x] Port agent infrastructure: `Agent`, `AgentDevice`, `Agents`, `iNetDeviceInterface`, `NullAgent`, `ReservedAgent` — `Agents.cs` is *progressive*, only NullAgent/ReservedAgent/the six D-8 stubs are wired; the disk/floppy/network/keyboard/mouse/display slots are TODO comments that the corresponding sub-task fills in
 - [ ] Port `DiskAgent` (base-image-only read path; C#-native checkpoint write path)
-- [ ] Port `DiskState`
+- [x] Port `DiskState`
 - [ ] Port `FloppyAgent` (raw 1.44 MiB only; IMD/DMK deferred per RISKS R7)
 - [ ] Port `DisplayAgent` + define `IDisplaySink` boundary
 - [ ] Port `KeyboardAgent` + define `IKeyboardSource` boundary
 - [ ] Port `MouseAgent` + define `IMouseSource` boundary
-- [ ] Port `BeepAgent`, `TtyAgent`, `SerialAgent`, `StreamAgent`, `ParallelAgent`, `ProcessorAgent` (small)
+- [x] Port `BeepAgent`, `TtyAgent`, `SerialAgent`, `StreamAgent`, `ParallelAgent`, `ProcessorAgent` (small) — all six FCBs allocated; ProcessorAgent provides clock + machine info, others are no-op stubs as in Java
 - [ ] Port `NetworkAgent`
 - [ ] Port `NetworkHubInterface` (TcpClient + 2 async tasks + Channel<byte[]>)
 - [ ] Port `NetworkInternalTimeService`
