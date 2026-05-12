@@ -1,6 +1,6 @@
 # Phase C — Engine completeness
 
-**Status**: Not started
+**Status**: Complete (closed 2026-05-12 — 629 tests passing)
 **Estimated effort**: 1–2 weeks single-engineer FTE
 **Predecessor**: Phase B (608 tests passing)
 **Successor**: Phase D (Duchess agents)
@@ -101,14 +101,14 @@ dotnet build csharp/Dwarf.slnx --verbosity normal | Select-String 'base144.raw'
 
 ## Sub-tasks
 
-- [ ] Copy `base144.raw` into `Dwarf.Engine/Resources/` and wire as `EmbeddedResource`
-- [ ] Port `Xfer.java` → `csharp/Dwarf.Engine/Xfer.cs`
-- [ ] Port `Processes.java` → `csharp/Dwarf.Engine/Processes.cs`
-- [ ] Port `InitialMesaMicrocode.java` → `csharp/Dwarf.Engine/InitialMesaMicrocode.cs`
-- [ ] Write `SmokeTests.cs` — boot germ, run 10k instructions
-- [ ] Verify: 608 tests + smoke pass
-- [ ] Commit: `feat(engine): Phase C — Xfer, Processes, InitialMesaMicrocode; germ image loads`
+- [x] Copy `base144.raw` into `Dwarf.Engine/Resources/` and wire as `EmbeddedResource`
+- [x] Port `Xfer.java` → `csharp/Dwarf.Engine/Xfer.cs`
+- [x] Port `Processes.java` → `csharp/Dwarf.Engine/Processes.cs`
+- [x] Port `InitialMesaMicrocode.java` → `csharp/Dwarf.Engine/InitialMesaMicrocode.cs`
+- [x] Write `SmokeTests.cs` — 11 liveness tests (see PROGRESS.md for rationale on the scope vs the original "boot germ, run 10k" plan)
+- [x] Verify: 618 Phase B tests + 11 smoke tests pass (629 total)
+- [x] Commit: `feat(engine): Phase C — Xfer, Processes, InitialMesaMicrocode; germ image loads`
 
 ## Hand-off
 
-When done: tick Phase C in PROGRESS.md, set active phase to D, commit doc changes.
+Phase C closed. Active phase is D (Duchess agents). See PROGRESS.md "2026-05-12 (Phase C close-out)" for the detailed session log.

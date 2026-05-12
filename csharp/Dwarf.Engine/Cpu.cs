@@ -108,6 +108,13 @@ public static class Cpu
         }
     }
 
+    // Flight-recorder arming hooks — invoked from Processes.interrupt() under
+    // `if (Config.LOG_OPCODES && Config.LOG_OPCODES_AS_FLIGHTRECORDER)`. Both
+    // consts are false, so the call sites are dead-eliminated; these stubs
+    // exist only to satisfy compilation.
+    public static void armDebugInterpreter() { }
+    public static void disarmDebugInterpreter() { }
+
     public static void logf(string format, params object[] args)
     {
         if (Config.LOG_OPCODES && unsilenced) { opcodesLogf(format, args); }
