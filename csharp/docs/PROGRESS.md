@@ -2,7 +2,7 @@
 
 **Current phase**: D (Duchess agents)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase C closed — 629 tests passing; Xfer/Processes/InitialMesaMicrocode real implementations land)
+**Last session**: 2026-05-12 (Phase D-1 + D-3 + D-8 — agent infrastructure, DiskState, 6 small stub agents; 629 tests still passing)
 
 ## Phase status
 
@@ -173,3 +173,26 @@ See `02-phase-b-opcodes.md` for details.
 - **Realistic smoke test scope** — the Phase C plan called for "boot germ, run ≥10k instructions". In practice `base144.raw` is a 1.44 MiB *floppy template* (2880 pages), not a germ (96 pages max); also there's no real germ file in the repo. The 11 smoke tests cover the same intent — proving the wiring is real and no Phase B stub survives — via direct assertions rather than a long-running boot.
 
 **Phase C closed. Next phase: D (Duchess agents) — Disk, Display, Keyboard, Mouse, Beep, TTY, Serial, Stream, Parallel, Floppy, Network + NetworkHubInterface. Phase D verification target: Pilot/GlobalView boots via headless harness; NetHub round-trip tested.**
+
+### 2026-05-12 (Phase D-1 + D-3 + D-8 — agent infrastructure, DiskState, 6 small stubs)
+
+- **All 629 tests still pass** (618 Phase B + 11 Phase C smoke). No new tests for these ports yet — agents are exercised via the engine, which requires real Mesa code (germ + disk image) to drive.
+- **Deleted** `csharp/Dwarf.Agents/Class1.cs` (default classlib stub).
+- **`Dwarf.Engine/eLevelVKey.cs`** — Java enum with constructor args ported as a sealed class with static-readonly instances (the established "Java enum with payload" pattern, like `PilotDefs.DisplayType`). 112 key constants; `setPressed` / `setReleased` mutate a `ushort[]` keyboard array via bit math. `getWord` / `getBit` / `getMask` accessors mirror Java. Identifier preserved verbatim (lowercase 'e' prefix on the type, 'k' on `knull` for the reserved-word slot).
+- **`Dwarf.Engine/iUiDataConsumer.cs`** — UI→engine callback interface (sibling of the existing `iMesaMachineDataAccessor` engine→UI interface). The nested Java `@FunctionalInterface PointerBitmapAcceptor` ports as a C# `public delegate`. `Supplier<int[]>` becomes `Func<int[]>`. Lives in `Dwarf.Engine` to match the Java source location.
+- **`Dwarf.Agents/AgentDevice.cs`** — 16-value enum. Java enum's `getIndex()` method becomes a C# extension method on the enum type so `device.getIndex()` reads identically to Java.
+- **`Dwarf.Agents/Agent.cs`** — abstract base class. Fields kept as `protected readonly` to match Java's `protected final`. `logf` / `slogf` use C# format strings (`{0:X8}` instead of `%08X`) since they delegate to `string.Format`. FCB accessors port verbatim with `ushort` where Java had `short`.
+- **`Dwarf.Agents/iNetDeviceInterface.cs`** — `PacketActor` nested functional interface ports as a C# delegate. Java's `throws InterruptedException` clause has no C# analog (ThreadInterruptedException is unchecked); the throws-decl drops cleanly.
+- **`Dwarf.Agents/NullAgent.cs`** + **`Dwarf.Agents/ReservedAgent.cs`** — 1:1 ports, both FCB_SIZE=0.
+- **`Dwarf.Agents/Agents.cs` (PROGRESSIVE)** — central orchestrator. The 16 agent slots are wired in order to mirror Java's `initialize()`, but unported agents (Disk, Floppy, Network, Keyboard, Mouse, Display) write `0` to the FCB pointer and don't advance the FCB-area cursor. Each TODO is annotated with the Phase D sub-task that will fill it in. The post-init "nullify" pass mirrors Java exactly. `UiCallbacks` (Java's `iUiDataConsumer` implementation), `insertFloppy`/`ejectFloppy`, and `getDisplayColorTable` are deferred to their respective agent ports. `AgentStatisticsProvider` returns zeros across the board (real counter sources land with Disk/Floppy/Network). **CALLAGENT + MAPDISPLAY ESC opcode overrides are installed in `initialize()`** so the engine can invoke whatever agents exist; calls to unported slots hit the "agent not available" error path, which is correct.
+- **`Dwarf.Agents/DiskState.cs`** — 5-value enum, straight port.
+- **`Dwarf.Agents/BeepAgent.cs`** — 1-word FCB; `call()` logs the requested frequency and is otherwise a no-op (Dwarf is "noiseless").
+- **`Dwarf.Agents/TtyAgent.cs` / `SerialAgent.cs` / `ParallelAgent.cs`** — FCB_SIZE=0 stubs, all `call()` raise `Cpu.ERROR` (these slots are nullified after init by `Agents`, so `call()` should never fire in practice).
+- **`Dwarf.Agents/StreamAgent.cs`** — 12-word FCB stub. `call()` logs the command but returns `Result_error` (real stream/coprocessor wiring is out of scope for the port).
+- **`Dwarf.Agents/ProcessorAgent.cs`** — full port. Java `System.currentTimeMillis()` becomes `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`. `LocalDate` argument becomes `DateOnly`; `Date` return type becomes `DateTimeOffset`. The XDE no-blink workaround math is preserved.
+- **Octal pitfall (none this session)** — the Phase C lesson from `InitialMesaMicrocode.BFN_*` constants didn't recur; this session's ports use only decimal and hex literals.
+- **Java `setFcbWord(offset, short_value)` → C# `setFcbWord(int, ushort)`** — overload resolution prefers `(int, int)` for raw literals like `0` and `Status_success`, so initializers now use explicit `(ushort)` casts or pre-declared `const ushort` field types.
+
+**Phase D-1 sub-task is closed as "partial-complete"**: Agent / AgentDevice / iNetDeviceInterface / NullAgent / ReservedAgent are fully ported. `Agents.cs` is a *progressive* port — fully wired only for the agents that exist; each subsequent sub-task uncomments one more slot.
+
+**Phase D progress**: 3 of 14 sub-tasks done (D-1, D-3, D-8) — agent infrastructure scaffolded, small stub agents wired through CALLAGENT, ProcessorAgent provides clock + machine info. Next: D-2 (DiskAgent, ~973 LOC of Java — biggest single agent), then D-4 (FloppyAgent, ~1531 LOC). The display/keyboard/mouse trio (D-5/D-6/D-7) probably comes next after that since they also unlock `UiCallbacks` in `Agents.cs`.
