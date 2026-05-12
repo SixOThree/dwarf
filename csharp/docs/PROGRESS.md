@@ -1,15 +1,15 @@
 # Dwarf C# Port — Progress
 
-**Current phase**: B (Opcodes + tests)
+**Current phase**: C (Engine completeness)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (in-progress: Ch03+Ch05+Ch06+Ch07+Ch08 done — 617 tests passing; Misc/Ch09/Ch10/ChXX still pending)
+**Last session**: 2026-05-12 (Phase B closed — 618 tests passing; all 8 chapters + Misc ported)
 
 ## Phase status
 
 - [x] **Phase 0**: Scaffolding + per-phase docs
 - [x] **Phase A**: Foundation
-- [ ] **Phase B**: Opcodes + tests          ← active
-- [ ] **Phase C**: Engine completeness
+- [x] **Phase B**: Opcodes + tests          (618 passing — fidelity gate cleared)
+- [ ] **Phase C**: Engine completeness       ← active
 - [ ] **Phase D**: Duchess agents
 - [ ] **Phase E**: Avalonia UI for Duchess
 - [ ] **Phase F**: Draco port
@@ -29,12 +29,12 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Port `Ch07_Assignment_Instructions` + tests (212 tests — all pass first try)
 - [x] Port `Ch06_Jump_Instructions` + tests (146 tests — all pass first try; Phase B doc estimate of 45 was off)
 - [x] Port `Ch08_Block_Transfers` + tests (55 tests — all pass first try including full BITBLT/COLORBLT machinery)
-- [ ] Port `Ch09_ControlTransfers` (no tests)          ← next
-- [ ] Port `Ch10_Processes` (no tests)
-- [ ] Port `ChXX_Undocumented` (no tests)
-- [ ] Port `MiscTests` (~48 tests)
-- [ ] All 608 tests green
-- [ ] (Optional) BenchmarkDotNet baseline captured
+- [x] Port `Ch09_Control_Transfers` (~35 opcodes, no tests — compiles via Xfer/Processes Phase-C stubs)
+- [x] Port `Ch10_Processes` (~10 opcodes, no tests — compiles via Processes Phase-C stubs)
+- [x] Port `ChXX_Undocumented` (7 opcodes incl. VMFIND/STOPEMULATOR/SUSPEND/VERSION, no tests)
+- [x] Port `MiscTests` (1 test — 12-insn loop × 6M iterations, performance check)
+- [x] **All 608 fidelity-gate tests green** (618 total incl. 10 bonus smoke tests)
+- [ ] (Optional) BenchmarkDotNet baseline captured — deferred to Phase G
 
 ## Phase A sub-tasks (closed for reference)
 
@@ -145,3 +145,16 @@ See `02-phase-b-opcodes.md` for details.
 - **`Mem.createInitialPageMappingGuam()` in OnAfterTest** restores the page map after `test_COLORBLT_BW_1024x640_pattern` which deliberately unmaps pages before/after the target bitmap. Same pattern as Ch03's test.
 - **Total opcodes ported through this checkpoint**: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) + ~32 (Ch06) + ~17 (Ch08) = ~276 of ~256 — count slightly exceeds the prior estimate because old/new variants count separately.
 - **Phase B fidelity gate**: 617 passing > the original 608-test estimate. Remaining: Ch09/Ch10/ChXX (no tests, just port the opcodes), and Misc (~48 tests). Phase B can be declared closed once those land.
+
+### 2026-05-12 (Phase B close-out — Ch09/Ch10/ChXX/Misc, Phase B done)
+
+- **All 618 tests passing**, including the 1 Misc test which dispatches a 12-instruction hand-crafted loop through `Opcodes.dispatch` six times × 1,000,000 iterations = 72 million instructions in ~2 seconds. The interpreter loop is functionally validated end-to-end.
+- **Phase B fidelity gate fully closed.** Java upstream had 608 test methods total (1 Ch03 + 193 Ch05 + 146 Ch06 + 212 Ch07 + 55 Ch08 + 1 Misc = 608). The C# port has all 608 + 5 Phase-A fixture smoke + 5 Phase-B dispatch smoke = 618 passing.
+- **Ch09 (~35 opcodes, no tests)** ported with `Xfer` stub (XferType enum, alloc/free statics, impl interface). All Xfer methods throw `NotImplementedException("Phase C: Xfer")` at runtime since Phase B tests don't exercise control transfers. Includes LFC (old/new GF variants), EFC0..EFC12, EFCB, SFC, KFCB, LKB, RET, PI/PO/POR, LLKB/RKIB/RKDIB, DSK/LSK/XF/XE, BRK, DESC.
+- **Ch10 (~10 opcodes, no tests)** ported with Processes scheduling stubs added (isMonitorLocked/setMonitorLocked/enterFailed/exit/cleanupCondition/fetchPSB_flags/etc — 22 new stubs). ME, MX, MW, MR, NC, BC, REQ, SPP, DI, EI all compile.
+- **ChXX (7 opcodes, no tests)** — VERSION, STOPEMULATOR, SUSPEND, VMFIND, plus 3 Fuji Xerox undocumented opcodes. STOPEMULATOR's date conversion (which needed `ProcessorAgent.getJavaTime` from Phase D agents) replaced with raw hex print to avoid the layering violation; Phase D can re-add the human-readable date.
+- **MiscTests** (1 [Fact] — Java was 1 method, the "~48 tests" doc estimate was wrong) — performance/throttling test. `Environment.TickCount64` replaces `System.currentTimeMillis()`; `Thread.Sleep` replaces `Thread.sleep`. Loop calls `Opcodes.dispatch(Mem.getNextCodeByte())` which exercises the real dispatch pipeline end-to-end.
+- **Suppressed CA1708** (identifiers differ only by case) — `MachineType` enum + `machineType` field in ChXX, preserved verbatim from Java.
+- **Total opcodes ported**: Ch03 (19) + Ch05 (~60) + Ch06 (~32) + Ch07 (~148) + Ch08 (~17) + Ch09 (~35) + Ch10 (~10) + ChXX (7) = ~328 opcode entries registered across the OPC + ESC tables and old/new variants.
+
+**Phase B closed. Next phase: C (Engine completeness) — Xfer/Processes real implementations + InitialMesaMicrocode germ loader. Phase C verification target: smoke-boot a germ image through the interpreter.**
