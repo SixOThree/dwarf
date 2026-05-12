@@ -82,4 +82,34 @@ public static class Processes
 
     // For block-transfer interrupt checks (Ch08). Phase B: no interrupts during tests.
     public static bool interruptPending() => false;
+
+    // ---- Ch09/Ch10 stubs (Phase C will implement) ----
+
+    public static void enableInterrupts()  => throw new NotImplementedException("Phase C: Processes.enableInterrupts");
+    public static void disableInterrupts() => throw new NotImplementedException("Phase C: Processes.disableInterrupts");
+
+    // Monitor / condition / PSB helpers used by Ch10
+    public const int PDA_LP_header_ready = 0; // placeholder; Phase C wires up the real PDA offset
+    public const ushort PsbNull = 0;
+
+    public static bool isMonitorLocked(ushort mon) => throw new NotImplementedException("Phase C: Processes.isMonitorLocked");
+    public static ushort setMonitorLocked(ushort mon) => throw new NotImplementedException("Phase C: Processes.setMonitorLocked");
+    public static void enterFailed(int m) => throw new NotImplementedException("Phase C: Processes.enterFailed");
+    public static bool exit(int m) => throw new NotImplementedException("Phase C: Processes.exit");
+    public static void cleanupCondition(int c) => throw new NotImplementedException("Phase C: Processes.cleanupCondition");
+    public static ushort fetchPSB_flags(ushort psb) => throw new NotImplementedException("Phase C: Processes.fetchPSB_flags");
+    public static bool isPsbFlagsAbort(ushort flags) => throw new NotImplementedException("Phase C: Processes.isPsbFlagsAbort");
+    public static bool isConditionAbortable(ushort cond) => throw new NotImplementedException("Phase C: Processes.isConditionAbortable");
+    public static bool isConditionWakeup(ushort cond) => throw new NotImplementedException("Phase C: Processes.isConditionWakeup");
+    public static ushort unsetConditionWakeup(ushort cond) => throw new NotImplementedException("Phase C: Processes.unsetConditionWakeup");
+    public static void storePSB_timeout(ushort psb, ushort timeout) => throw new NotImplementedException("Phase C: Processes.storePSB_timeout");
+    public static ushort setPsbFlagsWaiting(ushort flags) => throw new NotImplementedException("Phase C: Processes.setPsbFlagsWaiting");
+    public static void storePSB_flags(ushort psb, ushort flags) => throw new NotImplementedException("Phase C: Processes.storePSB_flags");
+    public static void requeue(int src, int dst, ushort psb) => throw new NotImplementedException("Phase C: Processes.requeue");
+    public static ushort setPsbFlags_cleanup(ushort flags, ushort psb) => throw new NotImplementedException("Phase C: Processes.setPsbFlags_cleanup");
+    public static ushort getCondition_tail(ushort cond) => throw new NotImplementedException("Phase C: Processes.getCondition_tail");
+    public static void wakeHead(int c) => throw new NotImplementedException("Phase C: Processes.wakeHead");
+    public static ushort fetchPSB_link(ushort psb) => throw new NotImplementedException("Phase C: Processes.fetchPSB_link");
+    public static ushort setPsbLink_priority(ushort link, int priority) => throw new NotImplementedException("Phase C: Processes.setPsbLink_priority");
+    public static void storePSB_link(ushort psb, ushort link) => throw new NotImplementedException("Phase C: Processes.storePSB_link");
 }

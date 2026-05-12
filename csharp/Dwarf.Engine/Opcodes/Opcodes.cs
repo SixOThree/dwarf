@@ -209,8 +209,8 @@ public static class Opcodes
         Ch06_Jump_Instructions.RegisterAll();
         Ch07_Assignment_Instructions.RegisterAll();
         Ch08_Block_Transfers.RegisterAll();
-        // Ch09_Control_Transfers.RegisterAll();       // Phase B — pending
-        // Ch10_Processes.RegisterAll();               // Phase B — pending
-        // ChXX_Undocumented.RegisterAll();            // Phase B — pending
+        Ch09_Control_Transfers.RegisterAll();
+        Ch10_Processes.RegisterAll();
+        ChXX_Undocumented.RegisterAll();
     }
 }
