@@ -2,7 +2,7 @@
 
 **Current phase**: B (Opcodes + tests)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 + Ch06 + Ch07 done — 562/608 tests passing; Ch08/Ch09/Ch10/ChXX/Misc still pending)
+**Last session**: 2026-05-12 (in-progress: Ch03+Ch05+Ch06+Ch07+Ch08 done — 617 tests passing; Misc/Ch09/Ch10/ChXX still pending)
 
 ## Phase status
 
@@ -28,9 +28,8 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Port `Ch05_Stack_Instructions` + tests (193 tests — all pass first try)
 - [x] Port `Ch07_Assignment_Instructions` + tests (212 tests — all pass first try)
 - [x] Port `Ch06_Jump_Instructions` + tests (146 tests — all pass first try; Phase B doc estimate of 45 was off)
-- [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)          ← next
-- [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
-- [ ] Port `Ch09_ControlTransfers` (no tests)
+- [x] Port `Ch08_Block_Transfers` + tests (55 tests — all pass first try including full BITBLT/COLORBLT machinery)
+- [ ] Port `Ch09_ControlTransfers` (no tests)          ← next
 - [ ] Port `Ch10_Processes` (no tests)
 - [ ] Port `ChXX_Undocumented` (no tests)
 - [ ] Port `MiscTests` (~48 tests)
@@ -134,3 +133,15 @@ See `02-phase-b-opcodes.md` for details.
 - **Java test class skips `test_JB_*` methods** (no `@Test` annotation — likely upstream bug). Preserved the omission for behavioral identity; not ported.
 - **`@base` parameter name** — `base` is a C# keyword (referring to the parent class), so verbatim port required the `@` escape in `JIB`/`JIW` opcode bodies.
 - Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) + ~32 (Ch06) = ~259 of ~256 — note this slightly exceeds the prior estimate because the old/new GF variants in Ch07 count double.
+
+### 2026-05-12 (Phase B: Ch08_Block_Transfers — 55 tests, including BITBLT machinery)
+
+- **All 55 Ch08 tests passed first try.** Total: 617. This includes the entire BITBLT/BITBLTX/COLORBLT/TRAPZBLT machinery with its nested PixelSource/PixelSink classes, pattern sources (Monochrome/Unpacked/Unipixel), and the BitBltArgs parameter holder + execution engine.
+- **Ch08 is the most architecturally complex chapter** (1731 LOC Java → ~1300 LOC C#). The simple block transfers (BLT/BLTL/BLTLR/BLTC/BLTCL/CKSUM/BLEL/BLECL/BYTBLT/BYTBLTR) use MesaAbort-based restartability; the BITBLT family uses pendingBitBlts dictionary + line-by-line cached pixel processing.
+- **C# lambdas replace Java's anonymous-inner-class workarounds.** Java upstream noted "flaw in Java 8 spec or bug in Eclipse-Java8-Compiler?" forcing `new OpImpl() { public void execute() {...} }` for opcodes with mutable locals across try/catch. C# lambdas handle this correctly — used throughout.
+- **`Func<BitBltArgs>` replaces Java's `BitBltArgsLoader` functional interface**. Standard library delegate works the same.
+- **`Dictionary<int, BitBltArgs>` replaces `HashMap<Integer, BitBltArgs>`** for the pendingBitBlts restart table.
+- **`Processes.interruptPending()` stub returns false** during unit tests, so the block transfer interrupt-restart paths aren't exercised. The MesaAbort-based page-fault path is similarly latent (no Phase B test triggers a real page fault). Phase C/D will exercise these via Pilot.
+- **`Mem.createInitialPageMappingGuam()` in OnAfterTest** restores the page map after `test_COLORBLT_BW_1024x640_pattern` which deliberately unmaps pages before/after the target bitmap. Same pattern as Ch03's test.
+- **Total opcodes ported through this checkpoint**: 19 (Ch03) + ~60 (Ch05) + ~148 (Ch07) + ~32 (Ch06) + ~17 (Ch08) = ~276 of ~256 — count slightly exceeds the prior estimate because old/new variants count separately.
+- **Phase B fidelity gate**: 617 passing > the original 608-test estimate. Remaining: Ch09/Ch10/ChXX (no tests, just port the opcodes), and Misc (~48 tests). Phase B can be declared closed once those land.
