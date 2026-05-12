@@ -206,8 +206,8 @@ public static class Opcodes
     {
         Ch03_Memory_Organization.RegisterAll();
         Ch05_Stack_Instructions.RegisterAll();
+        Ch06_Jump_Instructions.RegisterAll();
         Ch07_Assignment_Instructions.RegisterAll();
-        // Ch06_Jump_Instructions.RegisterAll();       // Phase B — pending
         // Ch07_Assignment_Instructions.RegisterAll(); // Phase B — pending
         // Ch08_Block_Transfers.RegisterAll();         // Phase B — pending
         // Ch09_Control_Transfers.RegisterAll();       // Phase B — pending
