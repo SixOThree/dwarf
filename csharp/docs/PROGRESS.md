@@ -2,7 +2,7 @@
 
 **Current phase**: B (Opcodes + tests)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (in-progress: infrastructure + Ch03 vertical slice done; Ch05/Ch06/Ch07/Ch08/Ch09/Ch10/ChXX/Misc still pending)
+**Last session**: 2026-05-12 (in-progress: Ch03 + Ch05 done — 204/608 tests passing; Ch06/Ch07/Ch08/Ch09/Ch10/ChXX/Misc still pending)
 
 ## Phase status
 
@@ -25,9 +25,9 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Port `Ch03_Memory_Organization` (19 opcodes — 1 regular, 18 ESC)
 - [x] Port `Ch03_MemoryOrganizationTest` (1 test method, loops ~1023 sub-iterations)
 - [x] Add `OpcodeDispatchSmokeTest` (5 tests verifying dispatch pipeline end-to-end)
-- [ ] Port `Ch05_Stack_Instructions` + tests (193 tests)          ← next
-- [ ] Port `Ch07_AssignmentInstructions` + tests (212 tests)
-- [ ] Port `Ch06_JumpInstructions` + tests (~45 tests)
+- [x] Port `Ch05_Stack_Instructions` + tests (193 tests — all pass first try)
+- [ ] Port `Ch07_Assignment_Instructions` + tests (212 tests)          ← next
+- [ ] Port `Ch06_Jump_Instructions` + tests (~45 tests)
 - [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
 - [ ] Port `Ch09_ControlTransfers` (no tests)
 - [ ] Port `Ch10_Processes` (no tests)
@@ -102,3 +102,14 @@ See `02-phase-b-opcodes.md` for details.
 - **All 11 tests pass** (5 Phase A smoke + 1 Ch03 + 5 dispatch smoke). Build 0 warnings 0 errors.
 
 **Vertical slice complete** — the dispatch pipeline works end-to-end. Next session picks up at Ch05 (the largest chapter, 820 LOC, 193 tests) which will validate the sign-extension audit (RISKS R1).
+
+### 2026-05-12 (Phase B: Ch05_Stack_Instructions — 193 tests)
+
+- **All 193 Ch05 tests passed first try.** The sign-extension audit (RISKS R1) survives contact with reality on the chapter most exposed to signed/unsigned drift. Total: 204/608.
+- **Sign-extension pattern that works**: Java `short` → C# `(short)Cpu.pop()` cast at the signed-arithmetic call site. Examples: NEG, SDIV, SHIFT count, LINT, ROTATE, DCMP. Java's signed `& 0xFFFF` masking ceremony falls away — C#'s `ushort` pop is already 0..65535.
+- **One C# syntax gotcha**: shadowing a local in nested-then-outer scope is rejected by CS0136 (Java allows it). Renamed second `tmp` to `tmp2` in `rotateShort`.
+- **`>>>` operator** (unsigned right shift, C# 11+) is a direct stand-in for Java's `>>>`. Used in shiftShort, shiftLong, rotateShort, LUDIV bounds check, SDDIV/UDDIV test helpers.
+- **Floating-point**: `BitConverter.Int32BitsToSingle` / `SingleToInt32Bits` ports Java's `Float.intBitsToFloat` / `floatToRawIntBits` cleanly. FADD/FSUB/FMUL/FDIV/FCOMP/FLOAT implemented; ten less-used float ops (FIX, FIXI, FIXC, FSTICKY, FREM, FROUND, FROUNDI, FROUNDC, FSQRT, FSC) raise `signalEscOpcodeTrap` to delegate to Pilot's software emulation, matching Java.
+- **`AbstractInstructionTest.mkStack` typo preserved** correctly — `mkStack(33, ..., SP, ...)` tests like `test_REC` pass. The Java bug where `Cpu.SP = newSavedSP` (should be savedSP) doesn't affect Ch05 tests because the typo only hits when both SP *and* savedSP sentinels are present, which Ch05 tests don't do.
+- **Suppressed CA1711** for `OpImpl`. No new analyzer suppressions in this iteration.
+- Total opcodes ported through this checkpoint: 19 (Ch03) + ~60 (Ch05) = 79 of ~256.
