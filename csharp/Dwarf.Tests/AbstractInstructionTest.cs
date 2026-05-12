@@ -437,8 +437,14 @@ public abstract class AbstractInstructionTest : IDisposable
     {
         if (!memInitialized)
         {
-            // 256 kwords = 512 kbytes real memory, 512 kwords = 1 mbyte virtual memory
-            Mem.initializeMemoryGuam(PrincOpsDefs.MIN_REAL_ADDRESSBITS, PrincOpsDefs.MIN_REAL_ADDRESSBITS + 1);
+            // 256 kwords = 512 kbytes real memory, 512 kwords = 1 mbyte virtual memory.
+            // Another fixture (e.g. Phase C SmokeTests) may have initialized Mem
+            // first; skip the re-init in that case to avoid the "already initialized"
+            // guard, but still set up our derived offsets.
+            if (Mem.pageFlags == null)
+            {
+                Mem.initializeMemoryGuam(PrincOpsDefs.MIN_REAL_ADDRESSBITS, PrincOpsDefs.MIN_REAL_ADDRESSBITS + 1);
+            }
             memInitialized = true;
             firstUnmappedLongPointer = 1 << PrincOpsDefs.MIN_REAL_ADDRESSBITS;
             firstUnmappedPage = (int)((uint)firstUnmappedLongPointer >> 8);
