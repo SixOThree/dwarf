@@ -2,6 +2,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
+    <!-- HEthernet wraps NetworkHubInterface / NetworkInternalTimeService /
+         iNetDeviceInterface from Phase D — same reuse pattern as the Java
+         upstream's `engine/iop6085/HEthernet.java` importing `engine/agents`. -->
+    <ProjectReference Include="..\Dwarf.Agents\Dwarf.Agents.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
