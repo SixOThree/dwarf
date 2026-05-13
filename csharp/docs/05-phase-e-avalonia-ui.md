@@ -175,14 +175,14 @@ Manual UI-checks (do these in a session — don't skip!):
 - [x] Implement `App.axaml` + `MainWindow.axaml` shell (minimal — menu/toolbar/status-bar are deferred until needed)
 - [x] Port `KeyboardMapper` + `.map` file parser — `eKeyEventCode` (191 AWT VK_* constants) + `AvaloniaKeyMap` (Avalonia.Key → AWT VK_* bridge) + `KeyboardMapper` (mappings + press/release with Ctrl-modifier semantics + `.map` file parsing) all landed. `.map` file embedding deferred — current path uses a filesystem path; resource-embedding can be added when the Avalonia Duchess reshape lands.
 - [x] Port `KeyHandler` (Avalonia `KeyDown`/`KeyUp` → KeyboardMapper) — `Attach(InputElement)` / `Detach(InputElement)` wire to any Avalonia visual. Dead-key workaround (synthetic press + 50 ms `Task.Delay` release) ported; the Java `keyTyped` dead-key char handler (lines 130-140 Java upstream) deferred per RISKS R6 (test on Linux first).
-- [ ] Port `MouseHandler` (Avalonia pointer events → MouseAgent)
-- [ ] Implement `UiRefresher` (DispatcherTimer 20 ms)
-- [ ] Implement `WindowStateHandler` (pause refresh on focus loss)
-- [ ] Implement fullscreen toggle (F11)
-- [ ] Wire `Dwarf.Duchess` orchestration: Engine + Agents + UI
-- [ ] End-to-end smoke: Dawn or XDE boots, fully interactive
-- [ ] Manual UI checks (see Verification)
-- [ ] Commit: `feat(ui): Phase E — Avalonia UI for Duchess; full interactive boot`
+- [x] Port `MouseHandler` (Avalonia pointer events → MouseAgent) — `Input/MouseHandler.cs` with `Attach`/`Detach`. AWT-style button IDs 1/2/3 via Avalonia `PointerUpdateKind` and `InitialPressMouseButton`.
+- [x] Implement `UiRefresher` (DispatcherTimer 20 ms) — `UiRefresher.cs`; minimum-viable variant (display invalidation only). Status-bar / MP / stats deferred until MainWindow grows a status bar.
+- [ ] Implement `WindowStateHandler` (pause refresh on focus loss) — deferred (polish; UiRefresher exposes `Paused` property for wiring later).
+- [ ] Implement fullscreen toggle (F11) — deferred (polish).
+- [x] Wire `Dwarf.Duchess` orchestration: Engine + Agents + UI — `Duchess.RunGui(args, avaloniaLauncher)` does shared `setupEngine()` + GuiSession publish + engine thread + Avalonia launcher callback + engine stop/agent shutdown teardown.
+- [ ] End-to-end smoke: Dawn or XDE boots, fully interactive — awaits a Duchess-compatible disk artifact.
+- [ ] Manual UI checks (see Verification) — same; awaits boot artifact.
+- [ ] Commit: `feat(ui): Phase E — Avalonia UI for Duchess; full interactive boot` — partial: GUI wiring complete; boot validation pending disk artifact.
 
 ## Hand-off
 

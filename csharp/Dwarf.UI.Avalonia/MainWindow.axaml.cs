@@ -28,28 +28,58 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Dwarf.Engine;
 using Dwarf.UI.Avalonia.Controls;
+using Dwarf.UI.Avalonia.Input;
 
 namespace Dwarf.UI.Avalonia;
 
 public partial class MainWindow : Window
 {
+    private UiRefresher? _refresher;
+    private KeyHandler? _keyHandler;
+    private MouseHandler? _mouseHandler;
+
     public MainWindow()
     {
         AvaloniaXamlLoader.Load(this);
 
         var display = this.FindControl<DisplayControl>("display")!;
+        var session = GuiSession.Current;
 
-        // If Mem is initialized (the `-gui` flag wires it before launching
-        // Avalonia), bind directly to engine display memory. Otherwise
-        // fall back to the diagonal-stripes placeholder so the window
-        // shows *something* even when the host hasn't set up the engine.
-        if (Mem.pageFlags != null && Mem.getDisplayType() == DisplayType.monochrome)
+        if (session != null)
         {
+            // GUI Duchess mode: real engine running.
             display.Source = new MemDisplaySource();
-            this.Title = $"Dwarf / Duchess  —  {Mem.getDisplayPixelWidth()}x{Mem.getDisplayPixelHeight()} mono";
+            display.Focusable = true; // receive keyboard input
+
+            this.Title = $"Dwarf / Duchess  —  {session.DisplayWidth}x{session.DisplayHeight} mono  (Avalonia)";
+
+            // Wire input + refresh
+            _keyHandler = new KeyHandler(session.KeyMapper);
+            _keyHandler.Attach(this); // Window receives key events for the whole frame
+
+            _mouseHandler = new MouseHandler(session.Consumer, session.DisplayWidth, session.DisplayHeight);
+            _mouseHandler.Attach(display);
+
+            _refresher = new UiRefresher(display);
+            this.Opened += (_, _) => _refresher.Start();
+            this.Closing += (_, _) =>
+            {
+                _refresher?.Stop();
+                Processes.requestMesaEngineStop();
+            };
+        }
+        else if (Mem.pageFlags != null && Mem.getDisplayType() == DisplayType.monochrome)
+        {
+            // Prototype mode: Mem initialized but engine not running. Show
+            // whatever the init pattern left in display memory.
+            display.Source = new MemDisplaySource();
+            this.Title = $"Dwarf / Duchess  —  {Mem.getDisplayPixelWidth()}x{Mem.getDisplayPixelHeight()} mono (no engine)";
+
+            // Refresh once so static pattern paints; no UiRefresher needed.
         }
         else
         {
+            // Fallback: no Mem init either. Pure prototype window.
             display.Source = new DiagonalStripesSource(1024, 768);
             this.Title = "Dwarf / Duchess  —  test pattern (engine not initialized)";
         }
