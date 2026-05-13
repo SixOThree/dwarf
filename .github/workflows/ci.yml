@@ -1,0 +1,47 @@
+name: CI
+
+# Builds and tests the C# .NET 10 port (under csharp/) on Windows, Linux,
+# and macOS. The Java tree (src/) is unaffected — no Java CI was ever set
+# up upstream and the port doesn't introduce one.
+
+on:
+  push:
+    branches: [master, csharp-port]
+  pull_request:
+    branches: [master, csharp-port]
+
+# Cancel in-progress runs when a new commit lands on the same ref. Keeps
+# CI cheap and the latest commit's status fresh.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build+test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore NuGet packages
+        run: dotnet restore csharp/Dwarf.slnx
+
+      - name: Build (Debug)
+        run: dotnet build csharp/Dwarf.slnx --nologo --no-restore --configuration Debug
+
+      - name: Test
+        run: dotnet test csharp/Dwarf.slnx --nologo --no-build --configuration Debug --verbosity normal --logger "console;verbosity=normal"
+
+      - name: Build (Release)
+        run: dotnet build csharp/Dwarf.slnx --nologo --no-restore --configuration Release
