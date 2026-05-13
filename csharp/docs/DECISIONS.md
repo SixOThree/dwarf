@@ -23,6 +23,8 @@ The `OPCo_` / `OPCn_` variants (PrincOps pre-/post-4.0 global-frame architecture
 
 **Defer source generator until manual registration becomes painful.** Mechanical registration calls are easier to read and debug than generator output.
 
+**Performance verdict (Phase G-2, 2026-05-13)**: BenchmarkDotNet on the 12-instruction `MiscTests` loop measures **6.37 ns / instruction (~157 M insns/sec)** for pure dispatch and **6.78 ns / instruction (~147 M insns/sec)** for the full interpreter loop with throttled timeout checks. Zero allocations per operation. Java baseline on the same machine is ~36 M insns/sec; the C# port runs at ~4× Java throughput. RyuJIT inlines the `Action[]` dispatch effectively without `AggressiveInlining` hints or a source generator — the explicit registration design plus a JIT smart enough to devirtualize delegate-array calls is sufficient. RISKS R3 closed. See `csharp/Dwarf.Benchmarks/InterpreterLoopBenchmark.cs`.
+
 ---
 
 ## 2. Memory model — `ushort[]`, no `unsafe`

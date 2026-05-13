@@ -2,7 +2,7 @@
 
 **Current phase**: G (Polish) — Phase F coding-complete; verification (ViewPoint/XDE boot) awaits Draco disk artifact
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase G-1 — CI workflow + MIGRATION.md + README C# port section; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase G-2 — BenchmarkDotNet harness; **RISKS R3 closed** — measured ~157 M insns/sec, ~4× Java baseline; 656 tests still passing)
 
 ## Phase status
 
@@ -520,6 +520,39 @@ Recommendation: **(a)** — Phase G is the long pole. Boot validation can land a
 - **(b) Verify CI passes after push, then attempt NativeAOT publish** — quick feedback loop. CI failure modes are well-understood; NativeAOT is the bigger unknown.
 
 Recommendation: **(a)** — RISKS R3 is the last open performance question. Closing it answers whether the port is production-ready or needs Phase G perf tuning. NativeAOT is optional and can land last.
+
+### 2026-05-13 (Phase G-2 — BenchmarkDotNet harness; RISKS R3 closed)
+
+- **All 656 tests still pass.** New `Dwarf.Benchmarks` project added to the solution; the solution-wide `dotnet build` succeeds in both Debug and Release.
+- **`Dwarf.Benchmarks/Dwarf.Benchmarks.csproj`** — console exe with `BenchmarkDotNet 0.14.0` package reference + `Dwarf.Engine` project reference. Standalone (no `Dwarf.Tests` dependency — keeps xunit out of the Release binary). `<IsPackable>false</IsPackable>` since this isn't shippable.
+- **`Dwarf.Benchmarks/EngineFixture.cs`** (~180 LOC) — replicates `AbstractInstructionTest.prepareCpuCommon` + `prepareCpuOld` + the constructor's local-frame allocation, plus the `MkCode` / `MkLocalFrame` / `MkGlobalFrame` / `MkShortMem` / `MkLongMem` helpers from MiscTests. Copy-and-adapt rather than reference-and-reuse — the duplication is bounded (~180 LOC) and keeps the benchmark binary minimal. Installs a `BenchmarkThrower` that crashes the benchmark on any unexpected fault/trap (the 12-insn loop is pure load/store/arithmetic; nothing should fault).
+- **`Dwarf.Benchmarks/InterpreterLoopBenchmark.cs`** (~140 LOC) — two `[Benchmark]` methods with `OperationsPerInvoke = 12_000_000`:
+  - **PureDispatch** (baseline): just `Cpu.savedPC = Cpu.PC; Cpu.savedSP = Cpu.SP; Opcodes.dispatch(Mem.getNextCodeByte());` per instruction.
+  - **InterpreterLoop**: full `MiscTests.runLoop` body with `Processes.checkforInterrupts()` + 32K-throttled `Processes.checkForTimeouts()` per instruction.
+  - `[GlobalSetup]` runs the fixture + opcode dispatch table init once. `[IterationSetup]` resets `Cpu.PC` to `startPC` and `SP`/`savedSP` to 0 before each iteration (the loop is stack-balanced, but the reset is defensive).
+- **`Dwarf.Benchmarks/Program.cs`** — `BenchmarkSwitcher.FromAssembly(...).Run(args)` so the standard BDN CLI works: `--filter "*PureDispatch*"`, `--iterationCount 10`, `--warmupCount 5`, `--list flat`, `--help`, etc.
+- **Measured on the dev workstation** (.NET 10.0.6 RyuJIT AVX2, Windows 11, `--warmupCount 2 --iterationCount 5`):
+
+| Variant | ns/instruction | insns/sec | Allocations |
+|---|---:|---:|---:|
+| Pure dispatch (no interrupt checks) | 6.37 ns | 157 M | 0 |
+| Full interpreter loop (throttled timeout) | 6.78 ns | 147 M | 0 |
+
+- **Java baseline (same machine)**: ~36 M insns/sec from `MiscTests`. The C# port runs at **~4× Java throughput** with zero per-operation allocations. **RISKS R3 closed**; RyuJIT inlines the `Action[]` dispatch and the opcode bodies effectively without `[MethodImpl(AggressiveInlining)]` hints, source generators, or PGO toggles. The full-loop interrupt-housekeeping overhead is only ~6.5% of dispatch cost.
+- **BDN warning observed**: "minimum observed iteration time is ~76 ms which is very small; recommend ≥100 ms using more operations." A 12M-insn loop at 6.4 ns/insn produces 76 ms iterations. To get inside BDN's preferred zone, pass `--iterationCount 10` or bump `LoopIterations` in the benchmark source to 2.5M (= 30M insns/invocation, ~190 ms). The measured numbers are statistically clean at 5 iterations (std-dev <4%); the warning is precautionary, not a correctness issue.
+- **`RISKS.md` R3 Status: Open → Closed** with the resolution paragraph + table of measurements. **`DECISIONS.md` §1** gets a new "Performance verdict" footer with the same data — defers the source-generator option as unnecessary.
+
+**Phase G progress**: 5 of 9 sub-tasks done. Remaining:
+- **CI pass verification** on all 3 OSes — awaits the next `git push` (Phase G-1's workflow has run once; this commit will trigger it again on Linux/Windows/macOS with the new Benchmarks project in the matrix).
+- **NativeAOT publish** — optional. ~30 min of setup + verification.
+- **Both-emulators boot validation** — needs disk artifacts (user-driven).
+- **Merge `csharp-port` → `master`** — last step before tagging a release.
+
+**Next session pick-up — two viable paths**:
+- **(a) NativeAOT publish** — `<PublishAot>true</PublishAot>` on `Dwarf.Cli.csproj`; verify Avalonia 11 + explicit-registration opcode dispatch survive AOT trimming. ~30 min coding + verification.
+- **(b) End-of-Phase-G polish** — close the loop on Phase D's optional sub-task (the BDN baseline noted at line 37 of PROGRESS.md as "deferred to Phase G" — strikethrough it since G-2 now covers it). Touch up any latent docs inconsistencies. Then bundle the merge + tag in a final Phase G-3 commit.
+
+Recommendation: **(b)** — Phase G is ~85% done; tying off the loose ends and merging to master delivers a clean v2.0.0-csharp release. NativeAOT (a) is optional and can land as a follow-up after the initial release.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 
