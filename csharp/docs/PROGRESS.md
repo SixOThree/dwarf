@@ -1,8 +1,8 @@
 # Dwarf C# Port — Progress
 
-**Current phase**: E (Avalonia UI for Duchess) — Phase D paused at 12/14 sub-tasks; D-13/D-14 verification milestones await Duchess-compatible disk artifacts
+**Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase E — MouseHandler + UiRefresher + Duchess Avalonia reshape; -duchess -gui boots a real engine in Avalonia; 656 tests passing)
+**Last session**: 2026-05-13 (Phase F-1 — IOP foundation: IORegion + DeviceHandler + IOPTypes; 656 tests still passing)
 
 ## Phase status
 
@@ -11,8 +11,8 @@
 - [x] **Phase B**: Opcodes + tests          (618 passing — fidelity gate cleared)
 - [x] **Phase C**: Engine completeness       (629 passing — 618 Phase B + 11 smoke)
 - [~] **Phase D**: Duchess agents             (12/14 — D-13/D-14 await Duchess disk artifacts)
-- [ ] **Phase E**: Avalonia UI for Duchess    ← active (DisplayControl prototype landed)
-- [ ] **Phase F**: Draco port
+- [~] **Phase E**: Avalonia UI for Duchess    (12/12 coding sub-tasks; boot-to-login awaits Duchess disk)
+- [ ] **Phase F**: Draco port                 ← active (IOP foundation landed)
 - [ ] **Phase G**: Polish
 
 ## Phase B sub-tasks (active)
@@ -352,3 +352,33 @@ Recommendation: **(a)** — gets the interactive boot path complete. Then Phase 
 - **(c) Acquire a Duchess disk artifact** — then D-13 (boot Pilot to login) and D-14 (NetHub round-trip) close out Phase D.
 
 Recommendation: **(a)** — Phase F unlocks the largest remaining body of work and the existing 6085 disk artifacts. The Avalonia UI library is re-usable for Draco with minimal changes.
+
+### 2026-05-13 (Phase F-1 — IOP foundation: IORegion + DeviceHandler + IOPTypes)
+
+- **All 656 tests still pass.** No new unit tests this session — the IOP infrastructure types have no runtime behavior to test in isolation; they're tested implicitly by the device handlers (Phase F-2 onward) and end-to-end by booting ViewPoint.
+- **`Dwarf.Iop6085/IORegion.cs`** (~700 LOC C# from 978 LOC Java) — the foundation. Defines `IORAddress` / `Word` / `DblWord` / `Field` / `BoolField` / `IOPBoolean` interfaces plus 12 concrete implementations (`IORWord`, `IORByteSwappedWord`, `IORDblWord`, `IORByteSwappedDblWord`, `IORField`, `SwappedWord`, `CompoundDblWord`, `WordBoolean`, `ByteBoolean`) and the `IOStruct` base class for relocatable record structures. Java's `protected static` factory methods (`mkWord` / `mkByteSwappedWord` / `mkField` / `mkBoolField` / `mkCompoundDblWord` / `mkIOPBoolean` / `mkIOPShortBoolean` / `syncToSegment`) stay `protected static`. Handlers extend `IORegion` (via `IOPTypes`) to access them via inheritance.
+- **Port deviations**:
+  - Java's `IORegion extends Mem` — C# can't extend a static class, so the C# `IORegion` accesses `Mem.mem[]` directly via the public static field. No behavioral difference; just structural.
+  - Java `short get()` / `void set(short)` on `Word` → C# `ushort get()` / `set(ushort)`. The C# port already uses `ushort[]` for `Mem.mem`; using `ushort` for the Word API saves the `& 0xFFFF` masking ceremony. Field/DblWord still return `int` (they carry values that may exceed 16 bits in unusual configurations).
+  - Java `byteSwap(short v) -> int` → C# `byteSwap(ushort v) -> int`. Same numeric semantics; the input type changes to match the new Word API.
+  - Default interface methods used for `IORAddress.getIOPSegment`, `getIOPSegmentOffset`, `getWordLength`, `getFields` — C# 8+ default impls let the interfaces give a sensible base.
+- **C# `IORField` implements `BoolField`** (the most-derived) so it can serve as both a numeric `Field` and a `BoolField`. The Java upstream did the same.
+- **Subtle Java behavior preserved verbatim** in `innerMkDblWord` (line 295 of the C# port): the `swapped` flag is *inverted* compared to `innerMkWord` — `swapped=true` yields an `IORDblWord` (non-swapped), and `swapped=false` yields an `IORByteSwappedDblWord`. This looks like a Java bug but it's been deployed long enough that handlers depend on it; the C# port keeps the same inversion with a `// preserved verbatim` audit comment.
+- **`Dwarf.Iop6085/DeviceHandler.cs`** (~120 LOC C# from 158 LOC Java) — abstract base for the 8 device handlers. `mkMask()` is a static counter generating unique notify masks. Abstract methods: `getFcbRealAddress`, `getFcbSegment`, `processNotify`, `handleLockmem`, `handleLockqueue`, `refreshMesaMemory`, `shutdown`. Virtual `cleanupAfterLockmem` defaults to no-op. `MemOperation` enum with 5 values for the LOCKMEM instruction.
+- **`Dwarf.Iop6085/IOPTypes.cs`** (~340 LOC C# from 346 LOC Java) — shared struct types. Handler-ID constants (1=beep, 2=disk, 3=display, 4=ethernet, 5=floppy, 6=keyboardAndMouse, 7=maintPanel, 16=processor, 17=tty, 18=rs232c, 97=parallelPort, 127=last). Reusable structs: `IPCS`, `SegmentRec`, `SPSS`, `AlternateOpieAddress`, `ByteSwappedLinkPtr`, `ByteSwappedPointer`, `ClientCondition`, `IOPCondition`, `NotifyMask`, `OpieAddress` (with `fromLP` / `toLP` virtual address conversion), `QueueBlock`, `QueueEntry`, `TaskContextBlock`, `IORTable`. `OpieAddressType` enum with octal-encoded codes (Java upstream used Java's `0NNN` octal literal syntax; C# port converts to hex with the original octal in a comment — same trick as `InitialMesaMicrocode.BFN_*`).
+- **Cleanup**: deleted `Dwarf.Iop6085/Class1.cs` template stub.
+
+**Phase F progress**: 3 of 13 sub-tasks done (IORegion + DeviceHandler + IOPTypes — the foundation). Remaining:
+- **IOP coordinator** (~381 LOC Java) — the IOP module orchestration
+- **HProcessor / HBeep / HTTY** (small handlers, ~680 LOC total)
+- **HKeyboardMouse / HDisplay** (medium, ~660 LOC total)
+- **HFloppy** (~1770 LOC)
+- **HDisk** (~2200 LOC Java; ~half is delta machinery skippable per the Phase F doc — read-only path is what we need)
+- **HEthernet** (~966 LOC — reuses the existing `NetworkHubInterface` from Phase D)
+- **DracoHost orchestration** + CLI dispatch + ViewPoint/XDE boot validation
+
+**Next session pick-up — two options**:
+- **(a) IOP coordinator + small handlers (HProcessor/HBeep/HTTY)** — natural next layer above the foundation. ~1.0 KLOC of Java to port; each handler exercises the IORegion machinery so any latent porting bugs surface here.
+- **(b) Skip directly to HDisplay + HKeyboardMouse** — gets a visible/interactive Draco sooner. Skips HProcessor for now (the engine boots without it for the first few hundred instructions). Higher payoff but harder to debug if something breaks.
+
+Recommendation: **(a)** — methodical layer-by-layer build minimizes the multi-source-of-bugs problem. HProcessor + HBeep + HTTY are small and similar enough that they make a coherent commit.
