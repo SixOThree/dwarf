@@ -1,0 +1,60 @@
+/*
+Copyright (c) 2017, Dr. Hans-Walter Latz (original Java implementation)
+Copyright (c) 2026, Matthew Dugal (C# .NET 10 port)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * The names of the authors may not be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY EXPRESS
+OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+using Dwarf.Engine;
+
+namespace Dwarf.Agents;
+
+// Implementation for one of the "reserved" agents.
+public class ReservedAgent : Agent
+{
+    private const int FCB_SIZE = 0;
+
+    public ReservedAgent(AgentDevice device, int fcbAddress)
+        : base(device, fcbAddress, FCB_SIZE)
+    {
+    }
+
+    public override void shutdown(System.Text.StringBuilder errMsgTarget)
+    {
+        // nothing to shutdown for this agent
+    }
+
+    public override void refreshMesaMemory()
+    {
+        // nothing to transfer to mesa memory for this agent
+    }
+
+    public override void call()
+    {
+        Cpu.ERROR("ReservedAgent.call :: invalid invocation of " + this.agentType);
+    }
+
+    protected override void initializeFcb()
+    {
+    }
+}

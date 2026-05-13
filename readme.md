@@ -15,7 +15,32 @@ Xerox machines have been named *D*warf, *D*raco and *D*uchess.
 
 And yes, it is not the first open source software emulator for the Mesa architecture, this
 merit goes (to my knowledge) to Don Woodward for his [Dawn emulator](http://www.woodward.org/mps/)
-and Yasuhiro Hasegawa for his [Guam mesa-emulator](https://github.com/yokwe/mesa-emulator/tree/master/guam).  
+and Yasuhiro Hasegawa for his [Guam mesa-emulator](https://github.com/yokwe/mesa-emulator/tree/master/guam).
+
+### C# .NET 10 port
+
+A from-scratch port to **C# .NET 10** with an **Avalonia 11** UI lives under `csharp/`. As of 2026-05-13 the port is coding-complete for both Duchess (Guam) and Draco (6085); end-to-end verification on real disk artifacts is the remaining work in Phase G. The C# port runs on Windows, Linux, and macOS.
+
+Quick start with the C# port:
+
+```powershell
+# Build (requires .NET 10 SDK)
+dotnet build csharp/Dwarf.slnx --configuration Release
+
+# Run Duchess (Guam) — headless or with the Avalonia UI
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -duchess <config.properties>
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -duchess -gui <config.properties>
+
+# Run Draco (6085)
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco <config.properties>
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui <config.properties>
+```
+
+**Existing Java Dwarf users**: see [`csharp/MIGRATION.md`](./csharp/MIGRATION.md) for the one-time `java -jar dwarf.jar -merge` step you need to run before switching. The disk format diverges after that point.
+
+Port documentation lives in [`csharp/docs/`](./csharp/docs/) — start with [`00-overview.md`](./csharp/docs/00-overview.md) for the layered tour. The C# port preserves all Java identifier names verbatim for grep-diffability across the two trees.
+
+The Java implementation below remains the canonical reference and continues to work unchanged.
 
 ### Quick start
 
