@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Dwarf.Agents/Dwarf.Agents.csproj" />
+  <Project Path="Dwarf.Benchmarks/Dwarf.Benchmarks.csproj" />
   <Project Path="Dwarf.Cli/Dwarf.Cli.csproj" />
   <Project Path="Dwarf.Draco/Dwarf.Draco.csproj" />
   <Project Path="Dwarf.Duchess/Dwarf.Duchess.csproj" />

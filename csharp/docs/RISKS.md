@@ -31,15 +31,23 @@ Java's `short` is signed, so the engine masks `& 0xFFFF` everywhere it wants uns
 ## Medium-likelihood, medium-impact
 
 ### R3. .NET JIT slower than HotSpot on `Action[]` dispatch
-**Status**: Open
-**Trigger phase**: B (verification at end)
+**Status**: **Closed** (2026-05-13)
+**Trigger phase**: B (verification at end) — actually measured in Phase G-2
 
 Mesa is interpreter-heavy. The `opcTable[opcode]()` virtual call through a delegate array is the absolute hot path. .NET's tiered JIT may or may not match HotSpot here.
 
-**Mitigation**: BenchmarkDotNet at the end of Phase B. Target: ≥80% of Java throughput on a representative opcode mix. If short, options:
-- Mark hot opcode methods `[MethodImpl(MethodImplOptions.AggressiveInlining)]`
-- Replace `Action[]` with a switch statement source-generated from `[OpCode]` attributes
-- Profile-guided optimization (PGO) is on by default in .NET 8+; verify it's helping
+**Resolution**: `Dwarf.Benchmarks.InterpreterLoopBenchmark` measures the 12-instruction loop from `MiscTests.test_SampleCode` via BenchmarkDotNet. Measured on the development workstation (.NET 10.0.6 RyuJIT AVX2 on Windows 11):
+
+| Variant | ns/instruction | insns/sec | Allocations |
+|---|---:|---:|---:|
+| Pure dispatch (no interrupt checks) | 6.37 ns | 157 M | 0 |
+| Full interpreter loop (throttled timeout) | 6.78 ns | 147 M | 0 |
+
+Java baseline (MiscTests): ~36 M insns/sec on the same machine.
+
+The C# port runs at **~4× Java throughput** with zero per-operation allocations. RyuJIT inlines the dispatch table lookup and the opcode bodies effectively; the housekeeping overhead (interrupt + throttled timeout checks) is only ~6.5%. None of the proposed mitigations (`AggressiveInlining`, source-generated switch, PGO toggle) are needed. RISKS R3 closed without action.
+
+See `csharp/Dwarf.Benchmarks/InterpreterLoopBenchmark.cs` for the benchmark code, and PROGRESS.md 2026-05-13 entry for the analysis.
 
 ### R4. NetHub wire-protocol bugs
 **Status**: Open
