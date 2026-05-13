@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- BenchmarkDotNet refuses to run in Debug. The CLI scripts under
+         csharp/docs/07-phase-g-polish.md invoke with `-c Release`; this also
+         keeps the project compileable in Debug so the solution-wide build
+         (and CI) doesn't fail on it. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

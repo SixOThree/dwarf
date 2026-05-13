@@ -5,3 +5,17 @@ dist-bld
 .readme.md.html
 dwarf.jardesc
 dwarf.manifest
+
+# C# .NET port artifacts (under csharp/)
+csharp/**/bin/
+csharp/**/obj/
+csharp/**/out/
+csharp/**/.vs/
+csharp/**/*.user
+csharp/**/.idea/
+csharp/**/.vscode/
+csharp/**/TestResults/
+csharp/**/*.log
+csharp/**/*.swp
+csharp/**/.DS_Store
+csharp/**/BenchmarkDotNet.Artifacts/
