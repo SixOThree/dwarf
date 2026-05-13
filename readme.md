@@ -19,7 +19,7 @@ and Yasuhiro Hasegawa for his [Guam mesa-emulator](https://github.com/yokwe/mesa
 
 ### C# .NET 10 port
 
-A from-scratch port to **C# .NET 10** with an **Avalonia 11** UI lives under `csharp/`. As of 2026-05-13 the port is coding-complete for both Duchess (Guam) and Draco (6085); end-to-end verification on real disk artifacts is the remaining work in Phase G. The C# port runs on Windows, Linux, and macOS.
+A from-scratch port to **C# .NET 10** with an **Avalonia 11** UI lives under `csharp/`. As of 2026-05-13 the port is **released as `v2.0.1-csharp`** with both Duchess (Guam) and Draco (6085) emulators working end-to-end; interactive XDE 5.0 boot under Draco confirmed. The C# port runs on Windows, Linux, and macOS.
 
 Quick start with the C# port:
 
@@ -35,6 +35,21 @@ dotnet run --project csharp/Dwarf.Cli --configuration Release -- -duchess -gui <
 dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco <config.properties>
 dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui <config.properties>
 ```
+
+**Try the bundled 6085 disks immediately** — three working configs ship in `disks-6085/`:
+
+```powershell
+# XDE 5.0 with Tajo+hacks (most stable; recommended for first boot)
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/xde5.0_2xTajo+hacks.properties
+
+# ViewPoint 2.0.5 (the iconic Star/ViewPoint UI; MAC-bound to 10-00-FE-31-AB-21)
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/vp2.0.5.properties
+
+# XDE 5.0 reference disk (touchy; Stop button is the only safe shutdown)
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/xde5.0.properties
+```
+
+Read [`disks-6085/readme.md`](./disks-6085/readme.md) for the per-disk shutdown rules and known issues — they apply to both the Java and C# implementations.
 
 **Existing Java Dwarf users**: see [`csharp/MIGRATION.md`](./csharp/MIGRATION.md) for the one-time `java -jar dwarf.jar -merge` step you need to run before switching. The disk format diverges after that point.
 
