@@ -5,14 +5,12 @@ Update this doc as risks resolve (mark as mitigated, add notes from sessions whe
 ## High-likelihood, high-impact
 
 ### R1. Sign-extension drift in ported opcodes
-**Status**: Open
+**Status**: **Closed** (2026-05-12)
 **Trigger phase**: B
 
 Java's `short` is signed, so the engine masks `& 0xFFFF` everywhere it wants unsigned semantics. The audit during Phase B must catch every place where the C# port's choice of `short` / `ushort` / `int` differs from Java's effective intent.
 
-**Mitigation**: All 608 unit tests in `unittest/Ch0*Test.java` must pass before any agent work starts. Treat the test suite as the contract. If a test passes for Java but fails for C#, the C# code has drifted — fix the C# side, never the test.
-
-**Watch for**: any place Java does `(short)(value & 0xFFFF)`, `(int)(value & 0xFFFFFFFFL)`, `signExtendByte()`, `signExtendShort()`, or arithmetic between `int` and `short` operands.
+**Resolution**: Phase B fidelity gate cleared with **618 tests passing** (608 ported + 10 dispatch/fixture smoke tests). Ch05 (193 tests, the most signed/unsigned-exposed chapter) passed first try, validating the `ushort` memory + `(short)Cpu.pop()` signed-arithmetic pattern. The full sweep covered every place Java did `& 0xFFFF` ceremony, `signExtendByte()`, or signed/unsigned arithmetic — see PROGRESS.md Phase B session entries for the per-chapter audit notes.
 
 ---
 
@@ -58,43 +56,52 @@ The NetHub protocol is undocumented except by the Java source. Off-by-one in len
 **Mitigation**: During Phase D, run the Java Dwarf and C# Dwarf side-by-side against the same NetHub server; capture pcaps on both and diff. Any byte difference is a bug in C#.
 
 ### R5. Static-init ordering coupling between Cpu / Mem / Config
-**Status**: Open
+**Status**: **Closed** (2026-05-12)
 **Trigger phase**: A
 
 Java tolerates static-field init dependencies surprisingly well. C# is stricter, and the Java code has tight coupling between `Cpu`, `Mem`, `Config` static state.
 
-**Mitigation**: In Phase A, replace static-field initialization with explicit `Initialize(...)` methods called in a documented order. Don't rely on C#'s `static` constructor ordering.
+**Resolution**: Phase A applied the planned mitigation — all initialization is via explicit methods called in documented order: `Mem.initializeMemoryGuam(...)` / `Mem.initializeMemoryDaybreak(...)` first, then `Cpu.resetRegisters()`, then `Opcodes.initializeInstructionsPrincOpsPost40()` (or `...PrincOps40()` for legacy), then `Xfer.switchToNewPrincOps()`. `Config` is `public const bool` for dead-code elimination, so no init ordering concern. The 656 tests all use this order via `AbstractInstructionTest.prepareCpuCommon`; `Duchess.setupEngine` and `DracoHost.setupEngine` mirror it.
 
 ---
 
 ## Low-likelihood, low-medium impact
 
 ### R6. Linux dead-key keyboard workaround
-**Status**: Open
+**Status**: Open — tentative not-needed; awaits interactive Linux testing
 **Trigger phase**: E
 
 `KeyHandler.java` has a workaround for Linux dead-key handling (synthetic press + 50ms delay). Whether this is needed under Avalonia (which has its own platform input pipeline) is unknown.
 
-**Mitigation**: Try the simple port first. Test on Linux during Phase E. If dead keys work without the workaround, remove it. If they don't, port the workaround.
+**Phase E note**: the port skipped the workaround. Avalonia's TextInput pipeline differs from AWT and the dead-key suppression problem may not manifest. The HashSet-based `pressedKeys` tracking + `Remove` short-circuit in `KeyHandler.cs` is in place if a synthetic press is ever needed. **Awaits interactive Linux testing** — close as Closed if dead keys work without the workaround on Linux/X11 or Wayland; re-open with a port of the synthetic-press shim if they don't.
 
 ### R7. Floppy IMD / DMK formats harder than expected
-**Status**: Open (but deferred — see below)
-**Trigger phase**: D (deferred)
+**Status**: **Permanently deferred** (2026-05-13)
+**Trigger phase**: D / F-4b
 
 Legacy floppy formats (IMD, DMK) are read-only in the Java code, parsed against geometry assumptions. Porting may reveal hidden assumptions.
 
-**Mitigation**: **Defer.** 1.44 MiB raw images are the primary path. Users with IMD/DMK content can use the Java tool to convert. Re-evaluate at end of Phase D.
+**Resolution**: Per the original "defer" mitigation, neither Phase D-4 (Duchess `FloppyAgent`) nor Phase F-4b (Draco `HFloppy`) ports the IMD/DMK reader classes. Java upstream's `FloppyAgent.insertFloppy` / `HFloppy.insertFloppy` reject `.imd` and `.dmk` files with a `NotSupportedException` whose message points at the Java conversion tool. Phase D-4's `FloppyAgent` supports raw 1.44 MiB images (Guam path); Phase F-4b's `HFloppy` infrastructure is wired but the abstract `Floppy` base has no concrete subclass — both formats throw on `insertFloppy`. The `IMDFloppy` (~200 LOC) and `DMKFloppy` (~280 LOC) implementations from Java are not ported. A future contributor wanting 6085 floppy support can add a `RawFloppy` subclass of the abstract `Floppy` base (~150 LOC). MIGRATION.md (Phase G-1) documents this for end users.
 
 ### R8. Migration UX friction for existing Java Dwarf users
-**Status**: Open
+**Status**: **Closed** (2026-05-13)
 **Trigger phase**: G
 
 Users with active Java Dwarf disk deltas must run `-merge` once before using the C# port.
 
-**Mitigation**: Document the migration path in Phase G. Ship the Java JAR alongside the C# build as an explicit migration utility. Consider a one-time wrapper script that runs `java -jar dwarf.jar -merge <config>` then launches the C# port.
+**Resolution**: Phase G-1 shipped `csharp/MIGRATION.md` (~120 LOC) documenting the one-time `java -jar dwarf.jar -merge` step for both Duchess and Draco. Covers the disk-format compatibility matrix (Java reads/writes vs C# reads/writes), what's not supported in C# yet (delta write-back, IMD/DMK floppies, netinstall/netexec, BWS net-debug stub), and rollback paths. The Java `-merge` archives the pre-merge base + deltas into a timestamped `.zip` so rollback is preserve-and-restore, not destructive. Root `readme.md` links to MIGRATION.md from the C# port section.
+
+Wrapper script was not shipped — the manual `merge then run` flow is sufficient given the one-time nature. Java JAR shipping alongside C# binaries is a release-engineering choice deferred to the release tag step.
 
 ---
 
 ## Resolved / mitigated risks
 
-(Move risks here as they resolve, with notes on what happened.)
+Closed risks remain in-place in their original sections (above) with `**Closed**` status and a resolution paragraph — preserves the narrative across the port lifetime rather than fragmenting it.
+
+**Current status (2026-05-13)**:
+- **Closed**: R1 (sign-extension), R2 (Avalonia paint), R3 (.NET JIT dispatch), R5 (static-init), R8 (migration UX). 5 of 8.
+- **Permanently deferred**: R7 (IMD/DMK floppies). 1 of 8.
+- **Open**: R4 (NetHub wire-protocol — awaits Java/C# side-by-side pcap diff), R6 (Linux dead-key — awaits interactive Linux testing). 2 of 8.
+
+Neither open risk blocks the Phase G merge or release. Both surface during real-world usage and can be addressed in follow-up PRs.
