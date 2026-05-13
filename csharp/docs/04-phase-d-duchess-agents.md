@@ -150,7 +150,7 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 - [x] Port agent infrastructure: `Agent`, `AgentDevice`, `Agents`, `iNetDeviceInterface`, `NullAgent`, `ReservedAgent` — `Agents.cs` is *progressive*, only NullAgent/ReservedAgent/the six D-8 stubs are wired; the disk/floppy/network/keyboard/mouse/display slots are TODO comments that the corresponding sub-task fills in
 - [x] Port `DiskAgent` (base-image-only read path; in-memory shadow for writes; C#-native checkpoint format deferred to a future sub-task)
 - [x] Port `DiskState`
-- [ ] Port `FloppyAgent` (raw 1.44 MiB only; IMD/DMK deferred per RISKS R7)
+- [x] Port `FloppyAgent` (raw 1.44 MiB only — wired into `Agents.cs` slot 2; IMD/DMK formats throw NotSupportedException at insertFloppy time per RISKS R7; LegacyFloppyDisk / IMDFloppyDisk / DMKFloppyDisk inner classes not ported)
 - [x] Port `DisplayAgent` — wired into `Agents.cs` slot 12; `IDisplaySink` per-purpose interface deferred (existing `iUiDataConsumer` in `Dwarf.Engine` is the UI boundary)
 - [x] Port `KeyboardAgent` — wired into `Agents.cs` slot 5; Java `synchronized` methods become C# `lock(_lock)`; `IKeyboardSource` per-purpose interface deferred
 - [x] Port `MouseAgent` — wired into `Agents.cs` slot 7; Java `synchronized` methods become C# `lock(_lock)`; `IMouseSource` per-purpose interface deferred

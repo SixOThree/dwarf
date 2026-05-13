@@ -2,7 +2,7 @@
 
 **Current phase**: D (Duchess agents)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase D-5/D-6/D-7 — Display + Keyboard + Mouse agents; UiCallbacks wired; 629 tests still passing)
+**Last session**: 2026-05-12 (Phase D-4 — FloppyAgent: raw 1.44 MiB only; IMD/DMK deferred per RISKS R7; 629 tests still passing)
 
 ## Phase status
 
@@ -227,3 +227,17 @@ See `02-phase-b-opcodes.md` for details.
 - **UI-boundary per-purpose interfaces deferred** — the Phase D doc planned `IDisplaySink` / `IKeyboardSource` / `IMouseSource` interfaces in `Dwarf.Agents/Ui/`, but the existing `iUiDataConsumer` interface (ported in D-1, lives in `Dwarf.Engine`) already covers the UI→engine boundary cleanly. Splitting into per-purpose interfaces is speculative until Phase E reveals what Avalonia actually needs. Noted in the Phase D doc.
 
 **Phase D progress**: 7 of 14 sub-tasks done (D-1, D-2, D-3, D-5, D-6, D-7, D-8). Next: D-4 (FloppyAgent, ~1531 LOC Java — IMD/DMK parsing deferred per RISKS R7, so the C# port is ~600 LOC of meaningful code). After that, the network stack (D-9/D-10/D-11) and the headless harness (D-12) close out Phase D.
+
+### 2026-05-12 (Phase D-4 — FloppyAgent)
+
+- **All 629 tests still pass.** No new unit-test coverage for FloppyAgent (same reasoning as DiskAgent — exercised by booting a Mesa OS).
+- **`Dwarf.Agents/FloppyAgent.cs` (~640 LOC)** — direct port of the Java outer `FloppyAgent` + inner `FloppyDisk` interface + inner `FloppyDisk3dot5` class. **The `LegacyFloppyDisk` / `IMDFloppyDisk` / `DMKFloppyDisk` inner classes are deferred** per RISKS R7. The C# port's `insertFloppy` rejects `.imd` and `.dmk` extensions with a `NotSupportedException` whose message points at the Java tool for conversion. ~890 LOC of legacy-format parsing is not ported.
+- **Java's static `byte[] ioBuffer` + `synchronized(ioBuffer)` blocks** become a per-instance `byte[] ioBuffer` field plus a static `object _ioLock` for the same exclusion guarantee. The Java upstream's shared-buffer design wouldn't be safe if multiple floppy instances ever existed concurrently; the per-instance + static-lock pattern is clearer.
+- **Java `File.canWrite()` → C# `IsFileWritable(path)` helper** that probes by opening the file `FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite` and catching the open-failure exception. Unlike the directory-probe used in `DiskAgent.IsDirectoryWritable`, this one targets the floppy file directly (which exists already — `File.Exists(filePath)` is checked first).
+- **Byte-swap detection preserved verbatim**: signatures `0xC5D9` at offset 2048 + `0xE5D6` at offset 3072 → swap pairs while loading. `loadRawContent` returns the detected `swapBytes` flag so `saveFloppy` writes back with the same orientation.
+- **`refreshMesaMemory`-driven floppy swap**: `insertFloppy` only sets `nextFloppy`; the actual swap (and save-back of the previous floppy) happens on the next `refreshMesaMemory()` tick. The C# port locks both methods on a per-instance `_lock` so the engine and UI threads see consistent state. Java's upstream locked only `refreshMesaMemory`; insertFloppy/ejectFloppy were unlocked.
+- **`Agents.cs` wiring**: floppyAgent slot 2 fully wired (replaces TODO Phase D-4). `Agents.insertFloppy(path, readonly)` and `Agents.ejectFloppy()` public APIs added with null-safety for the case where `Agents.initialize()` hasn't been called. `AgentStatisticsProvider.getFloppyReads/Writes` returns real counters via `floppyAgent?.getReads()`.
+- **`& 0xFFFF` masks preserved verbatim** even where they're no-ops on `ushort` — the Java idiom is harmless in C# and makes the diff against upstream cleaner.
+- **`Math.min` → `Math.Min`**, `>>>` works identically for unsigned right shift on `int` in C# 11+.
+
+**Phase D progress**: 8 of 14 sub-tasks done (D-1, D-2, D-3, D-4, D-5, D-6, D-7, D-8). Next: D-9/D-10/D-11 (network stack — NetworkAgent ~583 LOC + NetworkHubInterface ~469 LOC + NetworkInternalTimeService ~251 LOC). NetworkHubInterface is where the Threads-→Channels refactor lands (per DECISIONS.md §4 + §7); the wire-protocol byte-fidelity is RISKS R4. After that, D-12 (headless harness in Dwarf.Cli) and D-13/D-14 (boot Pilot/GlobalView + NetHub round-trip verified).

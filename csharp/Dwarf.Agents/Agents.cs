@@ -60,7 +60,7 @@ public static class Agents
 
     // specific agents directly accessible for published functionality
     private static DiskAgent? diskAgent;
-    // TODO Phase D-4: private static FloppyAgent? floppyAgent;
+    private static FloppyAgent? floppyAgent;
     // TODO Phase D-9: private static NetworkAgent? networkAgent;
     private static DisplayAgent? displayAgent;
     private static MouseAgent? mouseAgent;
@@ -152,10 +152,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // floppyAgent at index 2 — TODO Phase D-4
+        // floppyAgent at index 2
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        floppyAgent = new FloppyAgent(currFcbArea);
+        agent[idx] = floppyAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // networkAgent at index 3 — TODO Phase D-9
         idx++;
@@ -381,16 +384,40 @@ public static class Agents
     {
         public int getDiskReads() => diskAgent?.getReads() ?? 0;
         public int getDiskWrites() => diskAgent?.getWrites() ?? 0;
-        public int getFloppyReads() => 0;          // TODO Phase D-4
-        public int getFloppyWrites() => 0;         // TODO Phase D-4
+        public int getFloppyReads() => floppyAgent?.getReads() ?? 0;
+        public int getFloppyWrites() => floppyAgent?.getWrites() ?? 0;
         public int getNetworkpacketsSent() => 0;   // TODO Phase D-9
         public int getNetworkpacketsReceived() => 0; // TODO Phase D-9
     }
 
     /*
-     * floppy operations — TODO Phase D-4: insertFloppy / ejectFloppy once
-     * FloppyAgent is ported.
+     * floppy operations
      */
+
+    // Insert a floppy image into the virtual floppy drive. The file must be
+    // a 1.44 MiB raw 3.5" floppy image (1,474,560 bytes); .imd/.dmk legacy
+    // formats throw NotSupportedException (deferred per RISKS R7). If there
+    // is currently a floppy loaded, it is first "ejected" normally on the
+    // next refreshMesaMemory tick.
+    //
+    // Returns true if the floppy is effectively readonly (caller asked for
+    // r/w but the file isn't writable).
+    public static bool insertFloppy(string filePath, bool readonly_)
+    {
+        if (floppyAgent == null)
+        {
+            throw new InvalidOperationException("Agents.insertFloppy :: Agents.initialize() must be called first");
+        }
+        return floppyAgent.insertFloppy(filePath, readonly_);
+    }
+
+    // Remove a floppy image from the virtual floppy drive. Modifications are
+    // buffered in memory and written back to disk on the next
+    // refreshMesaMemory tick (or on shutdown).
+    public static void ejectFloppy()
+    {
+        floppyAgent?.ejectFloppy();
+    }
 
     // for debugging purposes
     public static void dumpIoArea()
