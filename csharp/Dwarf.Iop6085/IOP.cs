@@ -57,19 +57,14 @@ public static class IOP
     private static HBeep? hBeep;
     private static HDisplay? hDisplay;
     private static HKeyboardMouse? hKeyMo;
-    // private static HDisk? hDisk;              // TODO Phase F-4
-    // private static HFloppy? hFloppy;          // TODO Phase F-4
+    private static HDisk? hDisk;
+    // private static HFloppy? hFloppy;          // TODO Phase F-4b
     // private static HEthernet? hEthernet;      // TODO Phase F-5
     private static HTTY? hTty;
     private static HProcessor? hProcessor;
 
     // setup the IOP and create all necessary device handlers
-    //
-    // **Phase F-2 signature**: omits the three `HDisk.VerifyLabelOp` arguments
-    // and `logLabelProblems` flag that the Java upstream requires; those land
-    // when HDisk is ported (Phase F-4). DracoHost orchestration (later still)
-    // re-introduces them in the API surface.
-    public static void initialize()
+    public static void initialize(HDisk.VerifyLabelOp labelOpOnRead, HDisk.VerifyLabelOp labelOpOnWrite, HDisk.VerifyLabelOp labelOpOnVerify, bool logLabelProblems)
     {
         // install IOP6085-specific instructions
         Opcodes.implantEscOverride(0x87, "zESC.BYTESWAP", escBYTESWAP);
@@ -110,13 +105,13 @@ public static class IOP
         iorTable.segments[IOPTypes.HandlerID_processor].ioRegionSegment.set(fcbSegment);
         devHandlers.Add(hProcessor);
 
-        // TODO Phase F-4 — device handler for hard disk(s)
-        // hDisk = new HDisk(labelOpOnRead, labelOpOnWrite, labelOpOnVerify, logLabelProblems);
-        // fcbSegment = hDisk.getFcbSegment();
-        // iorTable.segments[IOPTypes.HandlerID_disk].ioRegionSegment.set(fcbSegment);
-        // devHandlers.Add(hDisk);
+        // device handler for hard disk(s)
+        hDisk = new HDisk(labelOpOnRead, labelOpOnWrite, labelOpOnVerify, logLabelProblems);
+        fcbSegment = hDisk.getFcbSegment();
+        iorTable.segments[IOPTypes.HandlerID_disk].ioRegionSegment.set(fcbSegment);
+        devHandlers.Add(hDisk);
 
-        // TODO Phase F-4 — device handler for floppy disk(s)
+        // TODO Phase F-4b — device handler for floppy disk(s)
         // hFloppy = new HFloppy();
         // fcbSegment = hFloppy.getFcbSegment();
         // iorTable.segments[IOPTypes.HandlerID_floppy].ioRegionSegment.set(fcbSegment);
@@ -313,10 +308,10 @@ public static class IOP
 
     private sealed class IOPStatisticsProvider : Processes.StatisticsProvider
     {
-        public int getDiskReads() => 0;     // TODO Phase F-4 — hDisk?.getReads() ?? 0
-        public int getDiskWrites() => 0;    // TODO Phase F-4 — hDisk?.getWrites() ?? 0
-        public int getFloppyReads() => 0;   // TODO Phase F-4 — hFloppy?.getReads() ?? 0
-        public int getFloppyWrites() => 0;  // TODO Phase F-4 — hFloppy?.getWrites() ?? 0
+        public int getDiskReads() => hDisk?.getReads() ?? 0;
+        public int getDiskWrites() => hDisk?.getWrites() ?? 0;
+        public int getFloppyReads() => 0;   // TODO Phase F-4b — hFloppy?.getReads() ?? 0
+        public int getFloppyWrites() => 0;  // TODO Phase F-4b — hFloppy?.getWrites() ?? 0
         public int getNetworkpacketsSent() => 0;     // TODO Phase F-5 — hEthernet?.getPacketsSentCount() ?? 0
         public int getNetworkpacketsReceived() => 0; // TODO Phase F-5 — hEthernet?.getPacketsReceivedCount() ?? 0
     }

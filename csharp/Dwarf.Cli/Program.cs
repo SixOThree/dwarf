@@ -31,14 +31,12 @@ using Dwarf.Engine;
 // Main program for the Dwarf Mesa emulator family.
 //
 // Modes:
-//   -duchess <config.properties>   headless Guam-machine harness (Phase D-12)
-//   -draco <config.properties>      6085/Daybreak emulator (Phase F — not yet ported)
-//   -gui                            Phase E prototype: Avalonia window with the
-//                                   diagonal-stripes test pattern (no engine yet)
-//
-// Phase E in progress: the `-gui` mode will eventually swap in a
-// MemDisplaySource (binding to the engine's display memory) and merge
-// with `-duchess` once the orchestration is fully ported.
+//   -duchess <config.properties>            headless Guam-machine harness
+//   -duchess -gui <config.properties>       Avalonia GUI for Guam machine
+//   -draco <config.properties>              headless 6085/Daybreak harness
+//   -draco -gui <config.properties>         Avalonia GUI for Draco
+//   -gui                                    standalone Avalonia prototype window
+//                                           (no engine; test pattern only)
 
 static int Usage()
 {
@@ -78,10 +76,10 @@ foreach (string arg in args)
 }
 
 // At least one mode must be selected; -gui can stand alone (prototype
-// window without engine) or combine with -duchess (full Avalonia
-// Duchess). -draco is exclusive with the others.
+// window without engine) or combine with -duchess (full Avalonia Duchess)
+// or -draco (full Avalonia Draco). -duchess and -draco are mutually exclusive.
 if (!isDuchess && !isDraco && !isGui) { return Usage(); }
-if (isDraco && (isDuchess || isGui)) { return Usage(); }
+if (isDuchess && isDraco) { return Usage(); }
 
 if (isDuchess && isGui)
 {
@@ -89,6 +87,15 @@ if (isDuchess && isGui)
     // calls back to launch the Avalonia application after the engine
     // thread is running.
     return Dwarf.Duchess.Duchess.RunGui(newArgs.ToArray(), () =>
+        Dwarf.UI.Avalonia.App.BuildAvaloniaApp()
+            .UsePlatformDetect()
+            .LogToTrace()
+            .StartWithClassicDesktopLifetime(newArgs.ToArray()));
+}
+
+if (isDraco && isGui)
+{
+    return Dwarf.Draco.DracoHost.RunGui(newArgs.ToArray(), () =>
         Dwarf.UI.Avalonia.App.BuildAvaloniaApp()
             .UsePlatformDetect()
             .LogToTrace()
@@ -119,7 +126,5 @@ if (isDuchess)
     return Dwarf.Duchess.Duchess.Main(newArgs.ToArray());
 }
 
-// isDraco
-Console.Error.WriteLine("Dwarf -draco is not yet implemented in the C# port (planned for Phase F).");
-Console.Error.WriteLine("Use the Java jar for the 6085/Daybreak emulator until then.");
-return 1;
+// isDraco (headless)
+return Dwarf.Draco.DracoHost.Main(newArgs.ToArray());

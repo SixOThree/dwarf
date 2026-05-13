@@ -5,6 +5,10 @@
     <ProjectReference Include="..\Dwarf.Iop6085\Dwarf.Iop6085.csproj" />
     <ProjectReference Include="..\Dwarf.Net\Dwarf.Net.csproj" />
     <ProjectReference Include="..\Dwarf.UI.Avalonia\Dwarf.UI.Avalonia.csproj" />
+    <!-- Reuse PropertiesExt + Utils from Duchess (shared CLI utilities). A
+         future refactor may extract these into Dwarf.Common, but for now the
+         project reference avoids code duplication. -->
+    <ProjectReference Include="..\Dwarf.Duchess\Dwarf.Duchess.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

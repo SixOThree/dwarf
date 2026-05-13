@@ -2,7 +2,7 @@
 
 **Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-3 — UI-routing handlers: HKeyboardMouse + HDisplay; full IOP.UiCallbacks wired; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase F-4 — HDisk read-only path + DracoHost orchestration; `-draco` and `-draco -gui` CLI dispatch live; 656 tests still passing)
 
 ## Phase status
 
@@ -409,6 +409,39 @@ Recommendation: **(a)** — methodical layer-by-layer build minimizes the multi-
 - **(b) HFloppy alone (Phase F-4a)** — ~1770 LOC of Java (the biggest single file in F-2's remaining set). Mostly independent of the UI handlers; can be done in parallel with (a) in a different session. Floppy support is needed for ViewPoint's "Install Software" workflow.
 
 Recommendation: **(a)** — completes the visible/interactive Draco harness sooner. HFloppy (b) is a self-contained slab of code that benefits from a fresh-context session anyway, and once HKeyboardMouse + HDisplay are in, the partial Draco can be launched in the Avalonia window for visual smoke-testing even without disk yet.
+
+### 2026-05-13 (Phase F-4a — HDisk read-only + DracoHost orchestration)
+
+- **All 656 tests still pass.** `-draco` and `-draco -gui` both dispatch from `Dwarf.Cli`; the no-arg invocation prints proper usage and exits 1. End-to-end boot validation awaits a ViewPoint/XDE `.zdisk` artifact.
+- **`Dwarf.Iop6085/HDisk.cs`** (~1100 LOC C# from 2203 LOC Java) — full handler port with the **read-only path only** per DECISIONS.md §8. Drops: `writeDiskFileContent` (DEFLATE writer), `mergeDelta`, `addToZip`, the new-disk constructor, `inactive_main` (a one-off data conversion tool), `chunks[]` modified-page bitmap (no delta persistence needed), and `dumpSector`/`dumpCylinders` debug helpers. Keeps: full FCB/DeviceContextBlock/IOCB/DOB structures (~600 LOC of layout), the read-side DiskFile (DEFLATE base load + in-memory shadow), all label/data verify+read+write methods (writes go to RAM only).
+- **DEFLATE handling**: Java upstream wraps `FileInputStream` in `java.util.zip.InflaterInputStream` (zlib-format DEFLATE with header). C# port uses `System.IO.Compression.ZLibStream(stream, CompressionMode.Decompress)`. Note: do NOT use `DeflateStream` — that's raw DEFLATE without the zlib wrapper; Java's `Inflater`/`Deflater` defaults include the wrapper. `ZLibStream` (added in .NET 6) is the correct counterpart.
+- **`.zdelta` overlay load path DROPPED**: Phase D-2's DiskAgent applied the same rule for Duchess; both formats are write-back-via-Java-`-merge` only. The Java HDisk's constructor calls `readDiskFile(iis, false)` for the base, then optionally re-reads with `(iis, true)` for the delta. The C# port keeps only the first call. **Future C#-native checkpoint format** (gzipped page-index + page-bytes) noted as a follow-up but deferred.
+- **`HDisk.VerifyLabelOp` public enum** is now a real nested enum on the actual handler class (Phase F-2 had to declare a static-class stub to satisfy the IOP signature; this session's port replaces it). The IOP coordinator's `initialize()` signature now matches Java's: `(VerifyLabelOp x3, bool logLabelProblems)`.
+- **`DeviceStatus_*` constants** are 32-bit bit patterns (Java `private static final int = 0b0100_...`). The most significant bit is set in several of them — Java's int is signed, so values look negative when printed as decimal. C# `int` is also signed; using `unchecked((int)0b...)` makes the intent explicit and silences CS0220 (literal-out-of-range).
+- **`ErrorType` / `Operation` / `DiskCommand` interface-as-namespace idiom** (Java `interface Foo { public final short noError = 0; }`) → C# `private static class Foo { public const ushort noError = 0; }`. `case Operation.readData` works because `const int` is a compile-time constant.
+- **The big `processNotify` method** (~280 LOC of switch-based IOCB processing) ports verbatim. The 6 read/write/verify operations share a single while-loop walking sectors, applying label verification per `VerifyLabelOp` (verify | updateDisk | noVerify), and tracking page-count + data-pointer increments. `Operation.formatTracks` fills with zeros (in-memory only). `readDiagnostic` and `readTrack` throw — never seen in upstream usage.
+- **Java's `disk.sectorsPerTrack` field access**: Java upstream uses both `DiskFile.sectorsPerTrack` (static const) and `disk.sectorsPerTrack` (instance access of the same static const). C# doesn't allow instance access of static fields; added `public int sectorsPerTrack_inst => sectorsPerTrack;` as an expression-bodied property to support both spellings.
+- **Static `wordSwapBytes`** is a HDisk-private helper, separate from `IORegion.byteSwap` because Java upstream defines it independently. Same numeric semantics (`((val << 8) | (val >>> 8)) & 0xFFFF`).
+- **`Dwarf.Draco/DracoHost.cs`** (~430 LOC C# from ~720 LOC Java) — Phase F-4 partial orchestration. Mirrors `Duchess.cs` shape: `initializeConfiguration` reads `.properties`, `setupEngine` wires Mem (Daybreak mode) + Cpu + Opcodes + HDisk + IOP + germ, `Main` runs headless, `RunGui` launches Avalonia. The germ comes from `scanDiskForGerm` (reads the physical-volume root sector at LBA 0, follows the germ-file chain through up to 96 sectors) — falls back to `fallbackGerm` file if disk scan fails. PrincOps 4.0 vs post-4.0 detection via `isPostPrincOps4dot0Germ` heuristic (16-word GFT inspection).
+- **Deferred to later F-X**:
+  - **HEthernet / NetHub** (Phase F-5) — `setHubParameters` call commented out, `NetworkInternalTimeService.setTimeShiftSeconds` deferred. `daysBackInTime` config option only applies `HProcessor.setTimeShiftSeconds`, not the net-time service yet.
+  - **`-netinstall` / `-netexec`** modes — log "requires HEthernet, Phase F-5" and skip.
+  - **HFloppy** (Phase F-4b) — `initialFloppy` / `floppyDirectory` config still parsed, but the actual `IOP.insertFloppy` throws NotSupported. The Java upstream's `MainUI` insert/eject toolbar buttons don't exist in the Avalonia port yet anyway.
+  - **DebuggerSubstituteMpHandler** (BWS net-debug stub) — not ported.
+- **Project reference graph adjustment**: added `Dwarf.Draco → Dwarf.Duchess` so DracoHost can reuse `PropertiesExt` + `Utils`. Semantically odd (peer applications referencing each other) but pragmatic; a future refactor can extract these into a `Dwarf.Common` library. Java's package layout has both `Duchess.java` and `Draco.java` next to `dwarf.PropertiesExt` in the same source tree, so the C# equivalent of cross-referencing is just a project dependency.
+- **`Dwarf.Cli/Program.cs` dispatch extended**: `-draco -gui` chains to `DracoHost.RunGui`, `-draco` alone to `DracoHost.Main`. Removed the "not yet implemented" stub. Tightened the mode-conflict check from `if (isDraco && (isDuchess || isGui))` to `if (isDuchess && isDraco)` — `-draco -gui` is now valid (mirrors `-duchess -gui`).
+- **CLI smoke-test** (no disk artifact): `dotnet run -- -draco` → prints "Error: no configuration specified" + usage line; `dotnet run -- -draco -gui` → same. Both exit cleanly. End-to-end boot test requires a real `.zdisk` file with embedded germ.
+
+**Phase F progress**: 10 of ~13 sub-tasks done. Remaining:
+- **HFloppy** (Phase F-4b) — ~1770 LOC Java, deferred per session-end recommendation.
+- **HEthernet** (Phase F-5) — ~966 LOC Java; reuses `NetworkHubInterface` from Phase D.
+- **End-to-end ViewPoint/XDE boot validation** — requires a Draco-compatible disk artifact + interactive testing.
+
+**Next session pick-up — two viable paths**:
+- **(a) HEthernet (Phase F-5)** — ~966 LOC Java. Wraps the existing `NetworkHubInterface` from Phase D with 6085-specific FCB/IOCB descriptor handling. Unblocks network-driven ViewPoint workflows (XNS time-service, file services). Skipping this is fine for early boot — Pilot will run without a network, just no network apps.
+- **(b) HFloppy (Phase F-4b)** — ~1770 LOC Java; ~600 LOC after dropping legacy IMD/DMK per RISKS R7. Needed for ViewPoint's "Install Software" workflow but not for daily boot.
+
+Recommendation: **(a)** — HEthernet completes the Phase F functional surface for everything except floppies. After this, the partial Draco can run XNS-networked workflows. HFloppy (b) is independent and can land any time before Phase G; defer it until/unless someone hits the install-from-floppy workflow.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 
