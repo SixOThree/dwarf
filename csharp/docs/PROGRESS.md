@@ -2,7 +2,7 @@
 
 **Current phase**: D (Duchess agents)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase D-1 + D-3 + D-8 — agent infrastructure, DiskState, 6 small stub agents; 629 tests still passing)
+**Last session**: 2026-05-12 (Phase D-2 — DiskAgent: base-image load + in-memory shadow + IOCB dispatch; delta encoder skipped per DECISIONS.md §8; 629 tests still passing)
 
 ## Phase status
 
@@ -196,3 +196,18 @@ See `02-phase-b-opcodes.md` for details.
 **Phase D-1 sub-task is closed as "partial-complete"**: Agent / AgentDevice / iNetDeviceInterface / NullAgent / ReservedAgent are fully ported. `Agents.cs` is a *progressive* port — fully wired only for the agents that exist; each subsequent sub-task uncomments one more slot.
 
 **Phase D progress**: 3 of 14 sub-tasks done (D-1, D-3, D-8) — agent infrastructure scaffolded, small stub agents wired through CALLAGENT, ProcessorAgent provides clock + machine info. Next: D-2 (DiskAgent, ~973 LOC of Java — biggest single agent), then D-4 (FloppyAgent, ~1531 LOC). The display/keyboard/mouse trio (D-5/D-6/D-7) probably comes next after that since they also unlock `UiCallbacks` in `Agents.cs`.
+
+### 2026-05-12 (Phase D-2 — DiskAgent)
+
+- **All 629 tests still pass.** DiskAgent has no unit-test coverage; it's exercised by booting a Mesa OS, which the headless harness (Phase D-12) will set up.
+- **`Dwarf.Agents/DiskAgent.cs` (~510 LOC)** — full port of the Java `DiskAgent` class plus its inner `DiskFile` class. **The DEFLATE delta encoder/decoder and `mergeDelta` are excised per DECISIONS.md §8**: the C# port reads only canonical (post-merge) base disks; writes go to an in-memory shadow only and are lost on shutdown. The `saveDisk()` method returns OK without persisting; `mergeDelta()` emits a one-line "use Java -merge instead" message. A future sub-task may add a C#-native checkpoint format (page-index + page-bytes, gzipped); the seam is documented inline.
+- **`DiskFile.DeltaCorrupted`** — kept as a private nested exception so the future checkpoint format can adopt the same error type. Currently unused.
+- **`DiskFile` constructor** — drops the Java `.zdelta` overlay block (lines 204-242 of Java) but preserves byte-swap detection via the leading two-byte physical seal (`0xA28A` or `0x8A A2`). Both byte orders are still supported on read since they're determined by the existing on-disk content, not by our writes.
+- **`DiskFile.chunks[]` modified-page bitmap removed** — Java tracked which pages were dirty so the delta encoder could write only the changed ones. Without a delta encoder this bookkeeping is unused; dropped (with a comment at the `writePage` site noting where to re-introduce it for a future checkpoint format).
+- **`File.exists()` / `File.canWrite()` / `File.getParentFile()` → C# `File.Exists` + a helper `IsDirectoryWritable(string dir)`** that probes via Guid-named create+delete. More portable than `DirectoryInfo.GetAccessControl()` (which doesn't work on Linux).
+- **Read/write/verify page paths port verbatim.** `Mem.readWord` returns `ushort` (vs Java `short` widening to `int`), so the C# IOCB processing reads cleaner: no `& 0xFF` masking on already-unsigned values. Status codes are `const ushort` (matching the `setFcbWord(int, ushort)` overload).
+- **`Mem.readWord(iocb + iocb_w_command) & 0xFFFF`** kept verbatim for diff fidelity even though the mask is a no-op on `ushort`.
+- **Wired into `Agents.cs`** — replaced the `TODO Phase D-2` placeholder; `diskAgent` field declared (instead of commented-out); `AgentStatisticsProvider.getDiskReads/Writes` now return real counters via `diskAgent?.getReads()` (null-conditional handles the case where `Agents.initialize()` wasn't called yet).
+- **API contract reminder for callers**: `DiskAgent.addFile(path, readonly, deltasToKeep)` must be called **before** `Agents.initialize()` because the `DiskAgent` constructor (via `initializeFcb`) asserts `diskFiles.Count == 1`. The headless harness (Phase D-12) will wire this up. No existing test calls `Agents.initialize()`, so adding DiskAgent didn't regress anything.
+
+**Phase D progress**: 4 of 14 sub-tasks done (D-1, D-2, D-3, D-8). Next: D-4 (FloppyAgent, ~1531 LOC Java — also drops the legacy IMD/DMK parsing per RISKS R7, so the C# port is closer to ~600 LOC of meaningful code). Then the display/keyboard/mouse trio (D-5/D-6/D-7) to unlock `UiCallbacks` and the UI-boundary interfaces.

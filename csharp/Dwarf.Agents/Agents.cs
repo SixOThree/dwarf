@@ -58,16 +58,13 @@ public static class Agents
     // all agents
     private static readonly Agent?[] agent = new Agent?[Enum.GetValues<AgentDevice>().Length];
 
-    // specific agents directly accessible for published functionality.
-    // TODO Phase D-2..D-6: declared as the strongly-typed fields when the
-    // corresponding agents are ported. Until then the slot above (Agent?[])
-    // is the only access path.
-    // private static DiskAgent diskAgent;          // TODO Phase D-2
-    // private static FloppyAgent floppyAgent;      // TODO Phase D-4
-    // private static NetworkAgent networkAgent;    // TODO Phase D-9
-    // private static DisplayAgent displayAgent;    // TODO Phase D-5
-    // private static MouseAgent mouseAgent;        // TODO Phase D-7
-    // private static KeyboardAgent keyboardAgent;  // TODO Phase D-6
+    // specific agents directly accessible for published functionality
+    private static DiskAgent? diskAgent;
+    // TODO Phase D-4: private static FloppyAgent? floppyAgent;
+    // TODO Phase D-9: private static NetworkAgent? networkAgent;
+    // TODO Phase D-5: private static DisplayAgent? displayAgent;
+    // TODO Phase D-7: private static MouseAgent? mouseAgent;
+    // TODO Phase D-6: private static KeyboardAgent? keyboardAgent;
 
     // TODO Phase D-5..D-7: port UiCallbacks (Java's `iUiDataConsumer`
     // implementation) once Keyboard/Mouse/Display agents land. Skeleton:
@@ -97,10 +94,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // diskAgent at index 1 — TODO Phase D-2
+        // diskAgent at index 1
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        diskAgent = new DiskAgent(currFcbArea);
+        agent[idx] = diskAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // floppyAgent at index 2 — TODO Phase D-4
         idx++;
@@ -320,8 +320,8 @@ public static class Agents
 
     private sealed class AgentStatisticsProvider : Processes.StatisticsProvider
     {
-        public int getDiskReads() => 0;            // TODO Phase D-2
-        public int getDiskWrites() => 0;           // TODO Phase D-2
+        public int getDiskReads() => diskAgent?.getReads() ?? 0;
+        public int getDiskWrites() => diskAgent?.getWrites() ?? 0;
         public int getFloppyReads() => 0;          // TODO Phase D-4
         public int getFloppyWrites() => 0;         // TODO Phase D-4
         public int getNetworkpacketsSent() => 0;   // TODO Phase D-9
