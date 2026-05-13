@@ -155,9 +155,9 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 - [x] Port `KeyboardAgent` — wired into `Agents.cs` slot 5; Java `synchronized` methods become C# `lock(_lock)`; `IKeyboardSource` per-purpose interface deferred
 - [x] Port `MouseAgent` — wired into `Agents.cs` slot 7; Java `synchronized` methods become C# `lock(_lock)`; `IMouseSource` per-purpose interface deferred
 - [x] Port `BeepAgent`, `TtyAgent`, `SerialAgent`, `StreamAgent`, `ParallelAgent`, `ProcessorAgent` (small) — all six FCBs allocated; ProcessorAgent provides clock + machine info, others are no-op stubs as in Java
-- [ ] Port `NetworkAgent`
-- [ ] Port `NetworkHubInterface` (TcpClient + 2 async tasks + Channel<byte[]>)
-- [ ] Port `NetworkInternalTimeService`
+- [x] Port `NetworkAgent` — wired into `Agents.cs` slot 3; selects NetworkHubInterface or NetworkInternalTimeService based on `setHubParameters` config
+- [x] Port `NetworkHubInterface` (TcpClient + 2 async tasks + `Channel<Packet>` per DECISIONS.md §4); 2-byte big-endian length-prefix wire protocol preserved byte-exact per RISKS R4
+- [x] Port `NetworkInternalTimeService` — XNS PEX time-request synthesizer; `lock(_lock)` replaces Java `synchronized`
 - [ ] Wire headless harness in `Dwarf.Cli` (`-duchess` flag dispatch, framebuffer dump output)
 - [ ] Boot Pilot/GlobalView to login screen (visible in framedump)
 - [ ] NetHub round-trip verified byte-identical to Java
