@@ -148,7 +148,7 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 ## Sub-tasks
 
 - [x] Port agent infrastructure: `Agent`, `AgentDevice`, `Agents`, `iNetDeviceInterface`, `NullAgent`, `ReservedAgent` — `Agents.cs` is *progressive*, only NullAgent/ReservedAgent/the six D-8 stubs are wired; the disk/floppy/network/keyboard/mouse/display slots are TODO comments that the corresponding sub-task fills in
-- [ ] Port `DiskAgent` (base-image-only read path; C#-native checkpoint write path)
+- [x] Port `DiskAgent` (base-image-only read path; in-memory shadow for writes; C#-native checkpoint format deferred to a future sub-task)
 - [x] Port `DiskState`
 - [ ] Port `FloppyAgent` (raw 1.44 MiB only; IMD/DMK deferred per RISKS R7)
 - [ ] Port `DisplayAgent` + define `IDisplaySink` boundary
