@@ -78,3 +78,30 @@ Remark: as all attempts to create an empty disk from scratch using head/cylinder
 available in the 1980's failed (the disks were not accepted by the installer), the Micropolis 1325 used as
 starting point is currently the only disk type available for 6085 machines emulated with Draco.    
 This disk has a raw capacity of 85 MByte and a formatted capacity of ~ 61 MByte (formatted for Pilot, 122880 sectors).
+
+## Booting under the C# .NET 10 port
+
+The C# port (under `../csharp/`) reads these `.zdisk` files directly — no migration step needed since none of them have `.zdelta` overlays in this repo. Three sample `.properties` configs ship alongside the disks:
+
+| Config | Disk | Notes |
+|---|---|---|
+| `xde5.0_2xTajo+hacks.properties` | `xde5.0_2xTajo+hacks.zdisk` | **Recommended for first boot.** Most stable of the three; multiple shutdown paths work. |
+| `vp2.0.5.properties` | `vp2.0.5.zdisk` | The iconic ViewPoint UI. **MAC-bound to `10-00-FE-31-AB-21`** — do not change `processorId` without re-activating Software Options. |
+| `xde5.0.properties` | `xde5.0.zdisk` | Original Bitsavers reference disk. Touchy under Pilot 12.3; **only the Stop button (close the Avalonia window) is a safe shutdown** — do not use XDE menu items. |
+
+From the repo root:
+
+```powershell
+# Recommended first boot — most stable disk
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/xde5.0_2xTajo+hacks.properties
+
+# ViewPoint 2.0.5
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/vp2.0.5.properties
+
+# Original XDE 5.0 reference disk (use with care)
+dotnet run --project csharp/Dwarf.Cli --configuration Release -- -draco -gui disks-6085/xde5.0.properties
+```
+
+Drop `-gui` for a headless harness (useful for smoke testing or running without a display).
+
+The per-disk shutdown rules in the sections above apply identically to the C# port — they're properties of Pilot/XDE running inside the emulator, not the emulator itself. The C# port additionally **does not persist disk changes** on shutdown (in-memory shadow only — see [`../csharp/MIGRATION.md`](../csharp/MIGRATION.md)), so any work you do in a session is lost when you close the window. A C#-native checkpoint format is on the roadmap.
