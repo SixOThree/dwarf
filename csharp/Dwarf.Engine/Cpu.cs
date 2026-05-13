@@ -25,6 +25,8 @@ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using OpcodesClass = Dwarf.Engine.Opcodes.Opcodes;
+
 namespace Dwarf.Engine;
 
 // Implementation of the core CPU functionality defined in the PrincOps:
@@ -270,7 +272,7 @@ public static class Cpu
         WP.set(0);
         WDC = 1; // disable interrupts
         XTS = 0;
-        // Processes.resetPTC(1) — Phase C, when Processes exists
+        Processes.resetPTC(1); // set PTC and time to IT
         running = true;
 
         // context initialization
@@ -289,11 +291,104 @@ public static class Cpu
         PC = 0;
     }
 
+    /*
+     * 4.1 Interpreter
+     */
+
     public static void initialize()
     {
-        // Phase C will wire this up to load the boot link from the SD table
-        // and call Xfer.impl.xfer(bootLink, 0, XferType.xcall, false).
-        throw new NotImplementedException("Cpu.initialize() requires Xfer (Phase C)");
+        resetRegisters();
+
+        int bootLink = Mem.readMDSDblWord(PrincOpsDefs.getSdMdsPtr(PrincOpsDefs.sBoot));
+        Xfer.impl.xfer(bootLink, 0, Xfer.XferType.xcall, false);
+    }
+
+    /*
+     * Timeout-check throttling avoids getting the system time after *every*
+     * instruction. PrincOps requires ticks of 15-60ms (cTickMin..cTickMax);
+     * at ~10 MIPS on representative hardware, 16k instructions corresponds
+     * to ~1.6 ms of execution time — comfortably below cTickMin.
+     */
+    private const int TIMEOUT_THROTTLE_COUNT = 16 * 1024;
+
+    // Instruction interpreter proper. Loops dispatching opcodes until the
+    // engine traps fatally (MesaERROR), is externally stopped (MesaStopped),
+    // or a runtime exception escapes. Returns a string describing the
+    // termination cause.
+    public static string processor()
+    {
+        try
+        {
+            initialize();
+            int timeoutCountDown = TIMEOUT_THROTTLE_COUNT;
+            while (true)
+            {
+                try
+                {
+                    bool interrupt = Processes.checkforInterrupts();
+                    bool timeout = false;
+                    if (timeoutCountDown < 1)
+                    {
+                        timeout = Processes.checkForTimeouts();
+                        timeoutCountDown = TIMEOUT_THROTTLE_COUNT;
+                    }
+                    else
+                    {
+                        timeoutCountDown--;
+                    }
+
+                    if (interrupt || timeout)
+                    {
+                        Processes.reschedule(true);
+                    }
+                    else if (running)
+                    {
+                        if (Config.LOG_OPCODES && Config.USE_DEBUG_INTERPRETER)
+                        {
+                            debugInterpreter();
+                            timeoutCountDown = 0; // reset throttling to force timeout checks
+                        }
+                        savedPC = PC;
+                        savedSP = SP;
+                        insns++;
+                        OpcodesClass.dispatch(Mem.getNextCodeByte());
+                    }
+                    else
+                    {
+                        Processes.idle(); // wake up on interrupt but at latest after NOT_RUNNING_SLEEP_MSECS
+                        timeoutCountDown = 0; // force timeout checks after sleeping
+                    }
+                }
+                catch (MesaAbort)
+                {
+                    continue;
+                }
+            }
+        }
+        catch (MesaERROR me)
+        {
+            Console.Error.WriteLine(me);
+            return me.Message;
+        }
+        catch (MesaStopped ms)
+        {
+            return ms.Message;
+        }
+        catch (Exception re)
+        {
+            Console.Error.WriteLine(re);
+            return $"Cpu.processor() => {re.GetType().FullName} : {re.Message}";
+        }
+    }
+
+    // Low-level debugger hook — invoked under
+    // `Config.LOG_OPCODES && Config.USE_DEBUG_INTERPRETER`, both `false` by
+    // default. Java upstream uses this to single-step under a flight
+    // recorder. Stubbed for the C# port; can be filled in if/when
+    // flight-recorder logging is wired up.
+    private static void debugInterpreter()
+    {
+        // intentionally empty — dead under default config
     }
 
     // ------------------------------------------------------------------
