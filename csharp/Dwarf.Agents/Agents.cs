@@ -61,7 +61,7 @@ public static class Agents
     // specific agents directly accessible for published functionality
     private static DiskAgent? diskAgent;
     private static FloppyAgent? floppyAgent;
-    // TODO Phase D-9: private static NetworkAgent? networkAgent;
+    private static NetworkAgent? networkAgent;
     private static DisplayAgent? displayAgent;
     private static MouseAgent? mouseAgent;
     private static KeyboardAgent? keyboardAgent;
@@ -160,10 +160,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // networkAgent at index 3 — TODO Phase D-9
+        // networkAgent at index 3
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        networkAgent = new NetworkAgent(currFcbArea);
+        agent[idx] = networkAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // parallelAgent at index 4 — wired here for layout; nullified by the
         // post-init pass below
@@ -386,8 +389,8 @@ public static class Agents
         public int getDiskWrites() => diskAgent?.getWrites() ?? 0;
         public int getFloppyReads() => floppyAgent?.getReads() ?? 0;
         public int getFloppyWrites() => floppyAgent?.getWrites() ?? 0;
-        public int getNetworkpacketsSent() => 0;   // TODO Phase D-9
-        public int getNetworkpacketsReceived() => 0; // TODO Phase D-9
+        public int getNetworkpacketsSent() => networkAgent?.getPacketsSentCount() ?? 0;
+        public int getNetworkpacketsReceived() => networkAgent?.getPacketsReceivedCount() ?? 0;
     }
 
     /*

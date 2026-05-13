@@ -83,6 +83,7 @@ dotnet_diagnostic.CA1859.severity = silent # Return concrete type (perf hint —
 dotnet_diagnostic.CA1805.severity = silent # Explicit initialization to default value
 dotnet_diagnostic.CA1711.severity = silent # Reserved-suffix names ('OpImpl', 'InstallNew' / 'InstallOld')
 dotnet_diagnostic.CA1708.severity = silent # Identifiers differ only by case (MachineType type vs machineType field — preserved from Java)
+dotnet_diagnostic.CA1001.severity = silent # Types that own disposable fields should be disposable (NetworkHubInterface manages _cts/_sockLock via shutdown(); the engine-thread call boundary doesn't have a Dispose hook)
 
 # Dead code from `if (Config.LOG_*)` blocks. The const flags allow JIT
 # to eliminate the bodies, which the compiler flags as unreachable. Intentional.
