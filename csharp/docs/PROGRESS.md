@@ -2,7 +2,7 @@
 
 **Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-1 — IOP foundation: IORegion + DeviceHandler + IOPTypes; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase F-2 — IOP coordinator + 3 small handlers: HBeep + HTTY + HProcessor; 656 tests still passing)
 
 ## Phase status
 
@@ -382,3 +382,30 @@ Recommendation: **(a)** — Phase F unlocks the largest remaining body of work a
 - **(b) Skip directly to HDisplay + HKeyboardMouse** — gets a visible/interactive Draco sooner. Skips HProcessor for now (the engine boots without it for the first few hundred instructions). Higher payoff but harder to debug if something breaks.
 
 Recommendation: **(a)** — methodical layer-by-layer build minimizes the multi-source-of-bugs problem. HProcessor + HBeep + HTTY are small and similar enough that they make a coherent commit.
+
+### 2026-05-13 (Phase F-2 — IOP coordinator + HBeep + HTTY + HProcessor)
+
+- **All 656 tests still pass.** No new unit tests this session — the three handlers are dummies (HBeep, HTTY) or read-only state proxies (HProcessor); their behavior is integration-tested by booting ViewPoint.
+- **Foundation tweak: `protected static` → `internal static` on IORegion factories.** The Java upstream's handlers `import static IORegion.*` to reach `mkWord` / `mkByteSwappedWord` / etc. — that pattern requires `protected` + same-package access. In C#, handlers can't extend IORegion (single inheritance to `DeviceHandler`), so the factories needed to drop one notch of protection. `internal static` matches Java's effective package-private semantics exactly — same-assembly access, no API surface leakage outside `Dwarf.Iop6085`.
+- **`IORegion.IORAddress.dump`**: added a default interface method matching the Java upstream's `default void dump(String prefix) { System.out.println("-- dump of IORAddress not supported --"); }`. Concrete FCB classes don't need to override it.
+- **`Dwarf.Iop6085/HBeep.cs`** (~115 LOC from 135 LOC Java) — dummy beeper. Inner `FCB` class implements `IORAddress` directly. `processNotify` logs the requested frequency and returns true. No state, no shutdown work. **Port deviation**: Java's `synchronized refreshMesaMemory()` becomes a plain no-op method in C# — the body is empty so the lock is meaningless.
+- **`Dwarf.Iop6085/HTTY.cs`** (~165 LOC from 197 LOC Java) — unsupported TTY device handler. The big FCB structure is ported verbatim (~20 fields including 3 TaskContextBlocks, baud rate, status word, eepromImage struct). The unused inner `WorkListType` class is preserved — Java upstream declares but doesn't instantiate it. CS0414 warning suppressed inline.
+- **`Dwarf.Iop6085/HProcessor.cs`** (~285 LOC from 348 LOC Java) — processor handler. The 12-value `Command` enum (noCommand/readGMT/writeGMT/readHostID/readVMMapDesc/readRealMemDesc/readDisplayDesc/readKeyboardType/readPCType/bootButton/readNumbCSBanks/readMachineType, plus `invalid=0xFFFF`) ported as a C# enum. `Command.values()[code]` → C# `(Command)code` (enum values match codes 1:1). `Cpu.MesaStopped` thrown on `bootButton`. **Date handling**: Java `LocalDate` → C# `DateOnly`; `Date` return type → `DateTimeOffset` (same convention as Phase D ProcessorAgent.cs). `LocalDate.toEpochDay()` reimplemented via `d.DayNumber - new DateOnly(1970, 1, 1).DayNumber`. `System.currentTimeMillis()` → `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()`.
+- **`(Mem.dBreak_displayType` value cast**: Java `(short)Mem.dBreak_displayType` → C# `(ushort)Mem.dBreak_displayType`. Same numeric semantics, matches the C# `Word.set(ushort)` signature.
+- **`byteSwap(this.cpuId0)` semantics preserved**: Java's `(short)byteSwap(this.cpuId0)` casts a signed short → int → short. C# uses `(ushort)byteSwap(this.cpuId0)` where `cpuId0` is `ushort` and `byteSwap(ushort)` returns `int`. Numerically identical.
+- **`MesaGmtEpoch = unchecked((int)2114294400)`**: the Java literal `2114294400` fits in signed int (max ~2.14B), but C# treats the literal as `int` by default. Wrapping in `unchecked` matches Java's silent overflow-tolerance semantics; the actual value (positive) doesn't overflow.
+- **`Dwarf.Iop6085/IOP.cs`** (~305 LOC from 381 LOC Java) — IOP coordinator, **progressive**: only the three small handlers (HBeep, HTTY, HProcessor) are instantiated in `initialize()`. `HKeyboardMouse`/`HDisplay`/`HDisk`/`HFloppy`/`HEthernet` slots are TODO-stubbed inline (commented-out blocks with the matching Phase F-3/F-4/F-5 tags) so each subsequent commit just un-comments the appropriate block.
+- **`IOP.initialize()` signature deviates from Java**: drops the `(VerifyLabelOp x3, boolean logLabelProblems)` arguments that the Java upstream takes (they're forwarded to the HDisk constructor). Phase F-4 will re-introduce these when HDisk lands. Comment in the doc-comment explains the deferral.
+- **`UiCallbacks`** stub-routes keyboard/mouse-key/mouse-position events to the TODO comments referencing the not-yet-ported handlers; `acceptMouseKey` translates 1/2/3 → eLevelVKey.Point/Menu/Adjust (works even without HKeyboardMouse, since it just calls `acceptKeyboardKey` which is also a stub). `registerUiDataRefresher` is fully wired via `Processes.registerUiRefreshCallback`.
+- **`IOPStatisticsProvider`** returns zero for all disk/floppy/network counters until those handlers exist.
+- **`insertFloppy` / `ejectFloppy`** throw `NotSupportedException` (`HFloppy is ported in Phase F-4`) — keeps the public surface stable while making the no-op nature explicit. DracoHost orchestration will route around this until Phase F-4 lands.
+- **ESC opcode handlers preserved bit-exact**: `BYTESWAP` (0x87), `NOTIFYIOP` (0x89), `LOCKMEM` (0x88), `LOCKQUEUE` (0x86) implanted via `Opcodes.implantEscOverride`. The `>>>` operator in BYTESWAP is supported on `int` in C# 11+; LOCKMEM's `int = Cpu.pop() & 0xFFFF` masks are retained for diff fidelity (no-op on the `ushort`-returning C# `Cpu.pop()`).
+- **`Cpu.push((ushort)...)` casts** required because C# `Cpu.push` takes `ushort` (Phase B decision); Java's push takes int.
+
+**Phase F progress**: 6 of 13 sub-tasks done (IORegion, DeviceHandler, IOPTypes, IOP, HBeep, HTTY, HProcessor — note the doc lists IOP + 3 small handlers under one bullet, so the strict count is 5/12 in the doc but 7/13 if you split). Remaining: **HKeyboardMouse + HDisplay** (Phase F-3), **HFloppy + HDisk** (Phase F-4), **HEthernet + DracoHost** (Phase F-5).
+
+**Next session pick-up — two viable paths**:
+- **(a) HKeyboardMouse + HDisplay (Phase F-3)** — ~660 LOC of Java. Medium-complexity; touches the cursor bitmap propagation and keyboard event handling that the existing `iUiDataConsumer.UiCallbacks` stubs in IOP.cs are TODO-routing to. After this, `IOP.getUiCallbacks()` becomes fully functional and the Avalonia UI can pump keystrokes through to a Draco engine.
+- **(b) HFloppy alone (Phase F-4a)** — ~1770 LOC of Java (the biggest single file in F-2's remaining set). Mostly independent of the UI handlers; can be done in parallel with (a) in a different session. Floppy support is needed for ViewPoint's "Install Software" workflow.
+
+Recommendation: **(a)** — completes the visible/interactive Draco harness sooner. HFloppy (b) is a self-contained slab of code that benefits from a fresh-context session anyway, and once HKeyboardMouse + HDisplay are in, the partial Draco can be launched in the Avalonia window for visual smoke-testing even without disk yet.

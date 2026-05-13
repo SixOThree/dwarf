@@ -83,6 +83,10 @@ public abstract class IORegion
         ushort getIOPSegmentOffset() => (ushort)(this.getRealAddress() % SEGMENT_GRANULARITY_WORDS);
         int getWordLength() => 1;
         List<Field>? getFields() => null;
+
+        // Default dump matches Java upstream — concrete IORAddress impls (FCB
+        // classes inside handlers) don't need to override it.
+        void IORDumpable.dump(string prefix) => Console.WriteLine("-- dump of IORAddress not supported --");
     }
 
     // 16-bit word location in IO region.
@@ -165,38 +169,38 @@ public abstract class IORegion
     }
 
     // Reserve the next word location for the given handler and location names.
-    protected static Word mkWord(string handlerName, string locationName) =>
+    internal static Word mkWord(string handlerName, string locationName) =>
         innerMkWord(handlerName, locationName, false);
 
     // Reserve the next byte-swapped word location.
-    protected static Word mkByteSwappedWord(string handlerName, string locationName) =>
+    internal static Word mkByteSwappedWord(string handlerName, string locationName) =>
         innerMkWord(handlerName, locationName, true);
 
     // Wrap a word with a byte-swap accessor.
-    protected static Word mkSwapped(Word w) => new SwappedWord(w);
+    internal static Word mkSwapped(Word w) => new SwappedWord(w);
 
     // Reserve the next double-word location.
-    protected static DblWord mkDblWord(string handlerName, string locationName) =>
+    internal static DblWord mkDblWord(string handlerName, string locationName) =>
         innerMkDblWord(handlerName, locationName, false);
 
     // Reserve the next byte-swapped double-word location.
-    protected static DblWord mkByteSwappedDblWord(string handlerName, string locationName) =>
+    internal static DblWord mkByteSwappedDblWord(string handlerName, string locationName) =>
         innerMkDblWord(handlerName, locationName, true);
 
     // Define a numeric subfield inside a word location defined by the bit mask.
-    protected static Field mkField(string fieldName, Word w, int bits) =>
+    internal static Field mkField(string fieldName, Word w, int bits) =>
         new IORField(fieldName, w, bits, isBool: false);
 
     // Define a boolean subfield inside a word location defined by the bit mask.
-    protected static BoolField mkBoolField(string fieldName, Word w, int bits) =>
+    internal static BoolField mkBoolField(string fieldName, Word w, int bits) =>
         new IORField(fieldName, w, bits, isBool: true);
 
     // Build a double-word from two consecutive single words.
-    protected static DblWord mkCompoundDblWord(Word w0, Word w1) =>
+    internal static DblWord mkCompoundDblWord(Word w0, Word w1) =>
         new CompoundDblWord(w0, w1);
 
     // Reserve the next location for a 16-bit boolean.
-    protected static IOPBoolean mkIOPBoolean(string handlerName, string locationName)
+    internal static IOPBoolean mkIOPBoolean(string handlerName, string locationName)
     {
         if (currIorMesaAddressOffset >= iorAddresses.Length)
         {
@@ -210,13 +214,13 @@ public abstract class IORegion
     }
 
     // Define a boolean subfield on the upper or lower byte of a word location.
-    protected static IOPBoolean mkIOPShortBoolean(string fieldName, Word w, bool hiByte) =>
+    internal static IOPBoolean mkIOPShortBoolean(string fieldName, Word w, bool hiByte) =>
         new ByteBoolean(fieldName, w, hiByte);
 
     // Move the address of the next free location to the next segment
     // boundary (16 bytes or 8 words). Must be called when starting a new
     // independently-addressable data structure (FCB, DCB, ...).
-    protected static int syncToSegment()
+    internal static int syncToSegment()
     {
         int segmentLimitOffset = currIorMesaAddressOffset % SEGMENT_GRANULARITY_WORDS;
         if (segmentLimitOffset != 0)
