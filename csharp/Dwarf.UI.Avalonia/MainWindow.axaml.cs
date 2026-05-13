@@ -26,6 +26,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Dwarf.Engine;
 using Dwarf.UI.Avalonia.Controls;
 
 namespace Dwarf.UI.Avalonia;
@@ -36,10 +37,21 @@ public partial class MainWindow : Window
     {
         AvaloniaXamlLoader.Load(this);
 
-        // Wire a placeholder display source for the Phase E prototype. The
-        // real source (binding to Mem.getDisplayRealMemory()) lands when
-        // Duchess.cs is reshaped to drive the Avalonia UI.
         var display = this.FindControl<DisplayControl>("display")!;
-        display.Source = new DiagonalStripesSource(1024, 768);
+
+        // If Mem is initialized (the `-gui` flag wires it before launching
+        // Avalonia), bind directly to engine display memory. Otherwise
+        // fall back to the diagonal-stripes placeholder so the window
+        // shows *something* even when the host hasn't set up the engine.
+        if (Mem.pageFlags != null && Mem.getDisplayType() == DisplayType.monochrome)
+        {
+            display.Source = new MemDisplaySource();
+            this.Title = $"Dwarf / Duchess  —  {Mem.getDisplayPixelWidth()}x{Mem.getDisplayPixelHeight()} mono";
+        }
+        else
+        {
+            display.Source = new DiagonalStripesSource(1024, 768);
+            this.Title = "Dwarf / Duchess  —  test pattern (engine not initialized)";
+        }
     }
 }
