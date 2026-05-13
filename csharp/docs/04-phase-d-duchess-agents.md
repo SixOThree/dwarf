@@ -151,9 +151,9 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 - [x] Port `DiskAgent` (base-image-only read path; in-memory shadow for writes; C#-native checkpoint format deferred to a future sub-task)
 - [x] Port `DiskState`
 - [ ] Port `FloppyAgent` (raw 1.44 MiB only; IMD/DMK deferred per RISKS R7)
-- [ ] Port `DisplayAgent` + define `IDisplaySink` boundary
-- [ ] Port `KeyboardAgent` + define `IKeyboardSource` boundary
-- [ ] Port `MouseAgent` + define `IMouseSource` boundary
+- [x] Port `DisplayAgent` — wired into `Agents.cs` slot 12; `IDisplaySink` per-purpose interface deferred (existing `iUiDataConsumer` in `Dwarf.Engine` is the UI boundary)
+- [x] Port `KeyboardAgent` — wired into `Agents.cs` slot 5; Java `synchronized` methods become C# `lock(_lock)`; `IKeyboardSource` per-purpose interface deferred
+- [x] Port `MouseAgent` — wired into `Agents.cs` slot 7; Java `synchronized` methods become C# `lock(_lock)`; `IMouseSource` per-purpose interface deferred
 - [x] Port `BeepAgent`, `TtyAgent`, `SerialAgent`, `StreamAgent`, `ParallelAgent`, `ProcessorAgent` (small) — all six FCBs allocated; ProcessorAgent provides clock + machine info, others are no-op stubs as in Java
 - [ ] Port `NetworkAgent`
 - [ ] Port `NetworkHubInterface` (TcpClient + 2 async tasks + Channel<byte[]>)

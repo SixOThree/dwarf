@@ -2,7 +2,7 @@
 
 **Current phase**: D (Duchess agents)
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase D-2 — DiskAgent: base-image load + in-memory shadow + IOCB dispatch; delta encoder skipped per DECISIONS.md §8; 629 tests still passing)
+**Last session**: 2026-05-12 (Phase D-5/D-6/D-7 — Display + Keyboard + Mouse agents; UiCallbacks wired; 629 tests still passing)
 
 ## Phase status
 
@@ -211,3 +211,19 @@ See `02-phase-b-opcodes.md` for details.
 - **API contract reminder for callers**: `DiskAgent.addFile(path, readonly, deltasToKeep)` must be called **before** `Agents.initialize()` because the `DiskAgent` constructor (via `initializeFcb`) asserts `diskFiles.Count == 1`. The headless harness (Phase D-12) will wire this up. No existing test calls `Agents.initialize()`, so adding DiskAgent didn't regress anything.
 
 **Phase D progress**: 4 of 14 sub-tasks done (D-1, D-2, D-3, D-8). Next: D-4 (FloppyAgent, ~1531 LOC Java — also drops the legacy IMD/DMK parsing per RISKS R7, so the C# port is closer to ~600 LOC of meaningful code). Then the display/keyboard/mouse trio (D-5/D-6/D-7) to unlock `UiCallbacks` and the UI-boundary interfaces.
+
+### 2026-05-12 (Phase D-5 + D-6 + D-7 — Display + Keyboard + Mouse agents)
+
+- **All 629 tests still pass.** UI-agent paths are exercised only by booting a real Mesa OS via the headless harness (Phase D-12), so no new unit tests.
+- **`Dwarf.Agents/KeyboardAgent.cs` (~110 LOC)** — direct port. Java `synchronized` methods (`resetKeys`, `handleKeyUsage`, `refreshMesaMemory`) become C# `lock(_lock) { ... }` on a private `readonly object _lock = new()`. `Processes.requestDataRefresh()` is called *outside* the lock to avoid lock-order-inversion concerns. The `eLevelVKey` keypress mutations work directly against the `ushort[]` FCB array — no `& 0xFFFF` needed.
+- **`Dwarf.Agents/MouseAgent.cs` (~210 LOC)** — direct port. Same `lock(_lock)` pattern for `recordMouseMoved` + `refreshMesaMemory`. The `setPointerBitmap`/`setPointerBitmapAcceptor` setters mirror Java by NOT taking the lock (they're called only from the engine thread during the display agent's CALLAGENT dispatch). The `uiPointerBitmapAcceptor` field is typed as `iUiDataConsumer.PointerBitmapAcceptor?` (the nested delegate from the Phase D-1 interface port) and invoked directly (no `.setPointerBitmap()` call as in Java's anonymous-interface-impl pattern — C# delegates have a built-in invoke).
+- **`Dwarf.Agents/DisplayAgent.cs` (~340 LOC)** — direct port. The only operations that do meaningful work are `setCLTEntry` (writes RGB into the color table), `setCursorPattern` (extracts a 16-line ushort[] from the FCB and forwards to `mouseAgent.setPointerBitmap`), and `updateRectangle` (calls `Mem.setDisplayMemoryDirty()`). All other operations log + set Status_success but don't render — Java upstream's TODO; preserved.
+- **Java upstream bugs preserved verbatim with audit comments**:
+  - `DisplayAgent` ctor in the byte-color branch contains `this.colorTable[1] = 0x00FFFFFF` in a loop bounded by `i` — should be `this.colorTable[i]`. Harmless in C# since (a) the FCB area is zero-initialized and (b) setCLTEntry overwrites all 255 non-zero entries before they're observed.
+  - `DisplayAgent.initializeFcb` writes 0 to `fcb_w16_cursorPattern` 16 times (same slot) and to `fcb_w4_pattern` 4 times (same slot). Should be `+ i` on each. Harmless because the C# port zero-initializes `ushort[] mem` at construction.
+  - Java upstream's `private final boolean isColorDisplay` field is assigned but never read — Java doesn't flag this; C# does (CS0414). Dropped from the C# port; the value is recoverable from `Mem.getDisplayType() == DisplayType.monochrome` at any future read site. Logged as a deviation.
+- **`KeyboardAgent` `logf` null-warning fix** — `key.ToString()` returns `string?` in C# (`Object.ToString` is nullable), passing into `params object[]` triggered CS8604. Fixed by passing the `eLevelVKey` instance directly; `string.Format` calls `ToString()` internally, and the result is fine even if it ends up as a generic type name (the call site is dead under `Config.IO_LOG_KEYBOARD = false`).
+- **`Agents.cs` wiring**: keyboardAgent (slot 5), mouseAgent (slot 7), displayAgent (slot 12) now fully wired. The `UiCallbacks` private class — Java's `iUiDataConsumer` implementation — is implemented and exposed via `Agents.getUiCallbacks()`. `Agents.getDisplayColorTable()` is wired too (returns `int[]?` since `displayAgent` could be null if `initialize()` wasn't called).
+- **UI-boundary per-purpose interfaces deferred** — the Phase D doc planned `IDisplaySink` / `IKeyboardSource` / `IMouseSource` interfaces in `Dwarf.Agents/Ui/`, but the existing `iUiDataConsumer` interface (ported in D-1, lives in `Dwarf.Engine`) already covers the UI→engine boundary cleanly. Splitting into per-purpose interfaces is speculative until Phase E reveals what Avalonia actually needs. Noted in the Phase D doc.
+
+**Phase D progress**: 7 of 14 sub-tasks done (D-1, D-2, D-3, D-5, D-6, D-7, D-8). Next: D-4 (FloppyAgent, ~1531 LOC Java — IMD/DMK parsing deferred per RISKS R7, so the C# port is ~600 LOC of meaningful code). After that, the network stack (D-9/D-10/D-11) and the headless harness (D-12) close out Phase D.

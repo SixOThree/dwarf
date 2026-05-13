@@ -62,17 +62,67 @@ public static class Agents
     private static DiskAgent? diskAgent;
     // TODO Phase D-4: private static FloppyAgent? floppyAgent;
     // TODO Phase D-9: private static NetworkAgent? networkAgent;
-    // TODO Phase D-5: private static DisplayAgent? displayAgent;
-    // TODO Phase D-7: private static MouseAgent? mouseAgent;
-    // TODO Phase D-6: private static KeyboardAgent? keyboardAgent;
+    private static DisplayAgent? displayAgent;
+    private static MouseAgent? mouseAgent;
+    private static KeyboardAgent? keyboardAgent;
 
-    // TODO Phase D-5..D-7: port UiCallbacks (Java's `iUiDataConsumer`
-    // implementation) once Keyboard/Mouse/Display agents land. Skeleton:
-    //   private sealed class UiCallbacks : iUiDataConsumer { ... }
-    //   public static iUiDataConsumer getUiCallbacks() => new UiCallbacks();
+    // the callbacks allowing the UI to transmit data modifications to the
+    // mesa engine
+    private sealed class UiCallbacks : iUiDataConsumer
+    {
+        public void acceptKeyboardKey(eLevelVKey key, bool isPressed)
+        {
+            if (keyboardAgent == null) { return; }
+            keyboardAgent.handleKeyUsage(key, isPressed);
+        }
 
-    // TODO Phase D-5: getDisplayColorTable() once DisplayAgent is ported.
-    //   public static int[] getDisplayColorTable() => displayAgent.getColorTable();
+        public void resetKeys()
+        {
+            if (keyboardAgent == null) { return; }
+            keyboardAgent.resetKeys();
+        }
+
+        public void acceptMouseKey(int key, bool isPressed)
+        {
+            if (key == 1)
+            {
+                this.acceptKeyboardKey(eLevelVKey.Point, isPressed);
+            }
+            else if (key == 2)
+            {
+                this.acceptKeyboardKey(eLevelVKey.Menu, isPressed);
+            }
+            else if (key == 3)
+            {
+                this.acceptKeyboardKey(eLevelVKey.Adjust, isPressed);
+            }
+        }
+
+        public void acceptMousePosition(int x, int y)
+        {
+            if (mouseAgent == null) { return; }
+            mouseAgent.recordMouseMoved(x, y);
+        }
+
+        public void registerPointerBitmapAcceptor(iUiDataConsumer.PointerBitmapAcceptor acpt)
+        {
+            if (mouseAgent == null) { return; }
+            mouseAgent.setPointerBitmapAcceptor(acpt);
+        }
+
+        public Func<int[]> registerUiDataRefresher(iMesaMachineDataAccessor refresher)
+        {
+            Processes.registerUiRefreshCallback(refresher);
+            return () => displayAgent!.getColorTable();
+        }
+    }
+
+    // Retrieve the agent callbacks for the UI.
+    public static iUiDataConsumer getUiCallbacks() => new UiCallbacks();
+
+    // Retrieve the display color table. Each entry is 0x00rrggbb, indexed by
+    // the pixel value in the display bitmap.
+    public static int[]? getDisplayColorTable() => displayAgent?.getColorTable();
 
     // Initialize the agents and set up the FCB area of the mesa engine.
     public static void initialize()
@@ -120,10 +170,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // keyboardAgent at index 5 — TODO Phase D-6
+        // keyboardAgent at index 5
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        keyboardAgent = new KeyboardAgent(currFcbArea);
+        agent[idx] = keyboardAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // beepAgent at index 6
         idx++;
@@ -132,10 +185,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // mouseAgent at index 7 — TODO Phase D-7
+        // mouseAgent at index 7
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        mouseAgent = new MouseAgent(currFcbArea);
+        agent[idx] = mouseAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // processorAgent at index 8
         idx++;
@@ -167,10 +223,13 @@ public static class Agents
         currFcbPtr += 2;
         currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
-        // displayAgent at index 12 — TODO Phase D-5
+        // displayAgent at index 12
         idx++;
-        Mem.writeDblWord(currFcbPtr, 0);
+        Mem.writeDblWord(currFcbPtr, currFcbArea);
+        displayAgent = new DisplayAgent(currFcbArea, mouseAgent!);
+        agent[idx] = displayAgent;
         currFcbPtr += 2;
+        currFcbArea = roundUp(currFcbArea + agent[idx]!.getFcbSize());
 
         // reserved3Agent at index 13
         idx++;
