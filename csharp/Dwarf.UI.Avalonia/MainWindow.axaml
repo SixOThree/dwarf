@@ -1,0 +1,8 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:Dwarf.UI.Avalonia.Controls"
+        x:Class="Dwarf.UI.Avalonia.MainWindow"
+        Title="Dwarf / Duchess (Phase E prototype)"
+        Width="1024" Height="768">
+    <controls:DisplayControl x:Name="display" />
+</Window>

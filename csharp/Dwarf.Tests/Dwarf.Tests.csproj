@@ -20,6 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
+    <ProjectReference Include="..\Dwarf.UI.Avalonia\Dwarf.UI.Avalonia.csproj" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
 
 </Project>

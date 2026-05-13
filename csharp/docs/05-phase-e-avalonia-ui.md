@@ -1,6 +1,6 @@
 # Phase E — Avalonia UI for Duchess
 
-**Status**: Not started
+**Status**: In progress — scaffolding + DisplayControl prototype landed 2026-05-12
 **Estimated effort**: 2–3 weeks single-engineer FTE
 **Predecessor**: Phase D (Duchess agents; headless boot works)
 **Successor**: Phase F (Draco port)
@@ -170,9 +170,9 @@ Manual UI-checks (do these in a session — don't skip!):
 
 ## Sub-tasks
 
-- [ ] Add Avalonia NuGet packages to `Dwarf.UI.Avalonia` + entry to `Dwarf.Cli`
-- [ ] **Prototype `DisplayControl`** with `WriteableBitmap`; measure paint time on Dawn; decide on Skia fallback
-- [ ] Implement `App.axaml` + `MainWindow.axaml` shell
+- [x] Add Avalonia NuGet packages to `Dwarf.UI.Avalonia` + entry to `Dwarf.Cli` (Avalonia 11.3.15)
+- [x] **Prototype `DisplayControl`** with `WriteableBitmap` — pixel-copy pipeline verified via 3 unit tests + visual `-gui` smoke test. Paint-time measurement on Dawn deferred until a `MemDisplaySource` lands and a Duchess-compatible disk artifact is available.
+- [x] Implement `App.axaml` + `MainWindow.axaml` shell (minimal — menu/toolbar/status-bar are deferred until needed)
 - [ ] Port `KeyboardMapper` + `.map` file parser; embed maps as resources
 - [ ] Port `KeyHandler` (Avalonia `KeyDown`/`KeyUp` → KeyboardAgent)
 - [ ] Port `MouseHandler` (Avalonia pointer events → MouseAgent)
