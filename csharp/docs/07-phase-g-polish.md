@@ -1,6 +1,6 @@
 # Phase G — Polish
 
-**Status**: Not started
+**Status**: In progress — G-1 (CI workflow + MIGRATION.md + README C# port section) landed 2026-05-13
 **Estimated effort**: 1–2 weeks single-engineer FTE
 **Predecessor**: Phase F (Draco port)
 **Successor**: (merge `csharp-port` → `master`, optionally archive Java tree)
@@ -147,13 +147,13 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess <test-config>
 
 ## Sub-tasks
 
-- [ ] Add `.github/workflows/ci.yml` for Win/Linux/macOS
-- [ ] Verify CI passes on all platforms
-- [ ] Run BenchmarkDotNet; tune if below 80% Java throughput
-- [ ] Write `csharp/MIGRATION.md`
-- [ ] Update root `readme.md` with C# port section
+- [x] Add `.github/workflows/ci.yml` for Win/Linux/macOS
+- [ ] Verify CI passes on all platforms (awaits first push after this commit)
+- [ ] Run BenchmarkDotNet; tune if below 80% Java throughput (deferred to Phase G-2)
+- [x] Write `csharp/MIGRATION.md`
+- [x] Update root `readme.md` with C# port section
 - [ ] (Optional) Enable NativeAOT and verify single-file publish
-- [ ] Final regression: both Duchess and Draco boot
+- [ ] Final regression: both Duchess and Draco boot (awaits disk artifacts)
 - [ ] Merge `csharp-port` → `master` (no-ff)
 - [ ] Tag release
 - [ ] Commit: `chore: Phase G — CI, perf tuning, migration guide`

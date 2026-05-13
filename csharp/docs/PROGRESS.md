@@ -1,8 +1,8 @@
 # Dwarf C# Port — Progress
 
-**Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
+**Current phase**: G (Polish) — Phase F coding-complete; verification (ViewPoint/XDE boot) awaits Draco disk artifact
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-4b — HFloppy infrastructure; **Phase F is now coding-complete**, all device handlers wired; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase G-1 — CI workflow + MIGRATION.md + README C# port section; 656 tests still passing)
 
 ## Phase status
 
@@ -12,10 +12,10 @@
 - [x] **Phase C**: Engine completeness       (629 passing — 618 Phase B + 11 smoke)
 - [~] **Phase D**: Duchess agents             (12/14 — D-13/D-14 await Duchess disk artifacts)
 - [~] **Phase E**: Avalonia UI for Duchess    (12/12 coding sub-tasks; boot-to-login awaits Duchess disk)
-- [ ] **Phase F**: Draco port                 ← active (IOP foundation landed)
-- [ ] **Phase G**: Polish
+- [~] **Phase F**: Draco port                 (coding-complete; verification awaits Draco disk artifact)
+- [ ] **Phase G**: Polish                     ← active (CI + docs landed; benchmarks + AOT + merge pending)
 
-## Phase B sub-tasks (active)
+## Phase B sub-tasks (closed for reference)
 
 See `02-phase-b-opcodes.md` for details.
 
@@ -500,6 +500,26 @@ Remaining for Phase F closure (none of these are coding):
 - **(c) HFloppy raw 1.44 MiB support** — adds a `RawFloppy` subclass of the abstract `Floppy` base. ~150 LOC. Self-contained.
 
 Recommendation: **(a)** — Phase G is the long pole. Boot validation can land alongside Phase G's CI work whenever a disk artifact is available. Raw 1.44 MiB floppy support is "nice to have" for the 6085 but isn't blocking any normal workflow.
+
+### 2026-05-13 (Phase G-1 — CI workflow + MIGRATION.md + README C# port section)
+
+- **All 656 tests still pass.** No code changes this session — only the GitHub Actions workflow + migration guide + root README addition. Build + test in Debug *and* Release configurations both green locally.
+- **`.github/workflows/ci.yml`** (~45 LOC YAML) — GitHub Actions CI matrix across `ubuntu-latest` / `windows-latest` / `macos-latest`. Steps: checkout, setup-dotnet@v4 with `10.0.x`, restore, build (Debug + Release), test. **Notable**: `fail-fast: false` so all three platforms run even if one fails (catches OS-specific regressions); `concurrency` group cancels in-progress runs when a new commit lands on the same ref (cheap CI + always-fresh status). Triggers on push and PR to `master` and `csharp-port`. **Verification deferred** to the next push — the workflow file's correctness is best validated by GitHub actually running it.
+- **`csharp/MIGRATION.md`** (~120 LOC Markdown) — explains the one-time `java -jar dwarf.jar -merge` step that existing Java Dwarf users must run before switching. Covers both Duchess (Guam) and Draco (6085) migration paths. Documents the disk-format compatibility matrix (Java reads/writes vs C# reads/writes), what's not supported in C# (delta write-back, IMD/DMK floppies, netinstall/netexec, BWS net-debug stub), and rollback paths. The `java -jar dwarf.jar -merge` archives the pre-merge base + delta files into a timestamped `.zip` so rollback is preserve-and-restore, not destructive.
+- **Root `readme.md`**: inserted a new "C# .NET 10 port" section between the project description and the existing "Quick start" header. ~25 LOC including a quickstart block (build/run commands for both emulators in both headless and `-gui` modes), a link to MIGRATION.md, and a link to `csharp/docs/00-overview.md`. The Java instructions below stay untouched — the existing readme remains the canonical reference for Java usage, and the C# section adds itself as a peer rather than a replacement.
+
+**Phase G progress**: 3 of 9 sub-tasks done. Remaining:
+- **CI pass verification** on all 3 OSes (awaits the next `git push`; if `.NET 10 SDK 10.0.x` isn't yet available on `actions/setup-dotnet@v4`'s feed, the workflow will fail and need a version-string nudge).
+- **BenchmarkDotNet** harness on `Cpu.Dispatch` — needs a new `Dwarf.Benchmarks` project, the `BenchmarkDotNet` NuGet package, and a benchmark scenario (probably reusing the `MiscTests` 12-insn loop). RISKS R3 still open until this is measured.
+- **NativeAOT** publish — optional. Needs `<PublishAot>true</PublishAot>` in `Dwarf.Cli.csproj` and verification that Avalonia + the reflection-free Phase B opcode registration support it. Likely fine, but verification cost > coding cost.
+- **Both-emulators boot validation** — needs disk artifacts (Duchess + Draco). User-driven.
+- **Merge `csharp-port` → `master`** — last step before tagging a release.
+
+**Next session pick-up — two viable paths**:
+- **(a) BenchmarkDotNet harness** — `Dwarf.Benchmarks` project + `[Benchmark]` over the `MiscTests` 12-insn dispatch loop, run in Release. Closes RISKS R3 (".NET JIT slower than HotSpot on Action[] dispatch"). ~150 LOC.
+- **(b) Verify CI passes after push, then attempt NativeAOT publish** — quick feedback loop. CI failure modes are well-understood; NativeAOT is the bigger unknown.
+
+Recommendation: **(a)** — RISKS R3 is the last open performance question. Closing it answers whether the port is production-ready or needs Phase G perf tuning. NativeAOT is optional and can land last.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 
