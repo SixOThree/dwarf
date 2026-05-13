@@ -25,18 +25,24 @@ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Main program for the Dwarf Mesa emulator family. Dispatches to either
-// the Guam machine emulation (Duchess) or the 6085/Daybreak emulation
-// (Draco — Phase F, not yet ported), based on the first `-duchess` or
-// `-draco` flag. Remaining args pass through to the dispatched program.
+using Avalonia;
+
+// Main program for the Dwarf Mesa emulator family.
 //
-// Usage:
-//   Dwarf -duchess <config.properties> [-v] [-merge] [-frames-out <path>] [-frames-interval-ms <ms>]
-//   Dwarf -draco <config.properties>     (Phase F — not yet ported)
+// Modes:
+//   -duchess <config.properties>   headless Guam-machine harness (Phase D-12)
+//   -draco <config.properties>      6085/Daybreak emulator (Phase F — not yet ported)
+//   -gui                            Phase E prototype: Avalonia window with the
+//                                   diagonal-stripes test pattern (no engine yet)
+//
+// Phase E in progress: the `-gui` mode will eventually swap in a
+// MemDisplaySource (binding to the engine's display memory) and merge
+// with `-duchess` once the orchestration is fully ported.
 
 static int Usage()
 {
     Console.WriteLine("Usage: Dwarf -duchess|-draco <machine-specific-args...>");
+    Console.WriteLine("       Dwarf -gui                              (Phase E prototype window)");
     return 1;
 }
 
@@ -47,6 +53,7 @@ if (args.Length < 1)
 
 bool isDuchess = false;
 bool isDraco = false;
+bool isGui = false;
 var newArgs = new List<string>();
 foreach (string arg in args)
 {
@@ -59,24 +66,38 @@ foreach (string arg in args)
     {
         isDraco = true;
     }
+    else if (lcArg == "-gui")
+    {
+        isGui = true;
+    }
     else
     {
         newArgs.Add(arg);
     }
 }
 
-if (isDuchess == isDraco)
+// exactly one mode must be selected
+int modeCount = (isDuchess ? 1 : 0) + (isDraco ? 1 : 0) + (isGui ? 1 : 0);
+if (modeCount != 1)
 {
     return Usage();
+}
+
+if (isGui)
+{
+    // Phase E prototype: launch the Avalonia window with the test pattern.
+    return Dwarf.UI.Avalonia.App.BuildAvaloniaApp()
+        .UsePlatformDetect()
+        .LogToTrace()
+        .StartWithClassicDesktopLifetime(newArgs.ToArray());
 }
 
 if (isDuchess)
 {
     return Dwarf.Duchess.Duchess.Main(newArgs.ToArray());
 }
-else
-{
-    Console.Error.WriteLine("Dwarf -draco is not yet implemented in the C# port (planned for Phase F).");
-    Console.Error.WriteLine("Use the Java jar for the 6085/Daybreak emulator until then.");
-    return 1;
-}
+
+// isDraco
+Console.Error.WriteLine("Dwarf -draco is not yet implemented in the C# port (planned for Phase F).");
+Console.Error.WriteLine("Use the Java jar for the 6085/Daybreak emulator until then.");
+return 1;

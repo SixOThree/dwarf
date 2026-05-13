@@ -1,9 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\Dwarf.Duchess\Dwarf.Duchess.csproj" />
-    <ProjectReference Include="..\Dwarf.Draco\Dwarf.Draco.csproj" />
-  </ItemGroup>
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -11,5 +6,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dwarf.Duchess\Dwarf.Duchess.csproj" />
+    <ProjectReference Include="..\Dwarf.Draco\Dwarf.Draco.csproj" />
+    <ProjectReference Include="..\Dwarf.UI.Avalonia\Dwarf.UI.Avalonia.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.15" />
+  </ItemGroup>
 
 </Project>

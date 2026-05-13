@@ -1,8 +1,8 @@
 # Dwarf C# Port — Progress
 
-**Current phase**: D (Duchess agents)
+**Current phase**: E (Avalonia UI for Duchess) — Phase D paused at 12/14 sub-tasks; D-13/D-14 verification milestones await Duchess-compatible disk artifacts
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase D-12 — headless Duchess harness in Dwarf.Cli; Cpu.processor() + Cpu.initialize() ported; 629 tests still passing)
+**Last session**: 2026-05-12 (Phase E first step — Avalonia 11.3.15 scaffolding + DisplayControl prototype + 3 new tests; 632 tests passing)
 
 ## Phase status
 
@@ -10,8 +10,8 @@
 - [x] **Phase A**: Foundation
 - [x] **Phase B**: Opcodes + tests          (618 passing — fidelity gate cleared)
 - [x] **Phase C**: Engine completeness       (629 passing — 618 Phase B + 11 smoke)
-- [ ] **Phase D**: Duchess agents             ← active
-- [ ] **Phase E**: Avalonia UI for Duchess
+- [~] **Phase D**: Duchess agents             (12/14 — D-13/D-14 await Duchess disk artifacts)
+- [ ] **Phase E**: Avalonia UI for Duchess    ← active (DisplayControl prototype landed)
 - [ ] **Phase F**: Draco port
 - [ ] **Phase G**: Polish
 
@@ -274,3 +274,22 @@ See `02-phase-b-opcodes.md` for details.
 **Phase D progress**: 12 of 14 sub-tasks done. **D-13 (boot Pilot/GlobalView to login screen)** and **D-14 (NetHub round-trip byte-identical to Java)** are verification milestones, both requiring a real Mesa OS image on disk. Without a disk image we can't actually exercise the harness end-to-end — but the wiring is there, the build is green, and tests pass.
 
 **Decision for next session**: D-13 and D-14 need real disk artifacts (a Pilot/Dawn/XDE/GlobalView disk image + germ file). Without those in the repo, the natural pivot is **Phase E (Avalonia UI for Duchess)** — the agents are ready, and Phase E adds the visual feedback loop that makes D-13 testable interactively. The user may want to acquire disk artifacts in parallel; D-13/D-14 can be ticked once an artifact is available.
+
+### 2026-05-12 (Phase E first step — Avalonia scaffolding + DisplayControl prototype)
+
+- **All 632 tests pass** (629 from Phase D + 3 new DisplayPipelineTests). The Avalonia infrastructure is in place; `dotnet run --project csharp/Dwarf.Cli -- -gui` opens a 1024×768 window with a diagonal-stripe test pattern as visual confirmation.
+- **Avalonia 11.3.15** chosen (latest stable as of 2026-05-10) — matches across `Avalonia`, `Avalonia.Themes.Fluent` (in `Dwarf.UI.Avalonia`), and `Avalonia.Desktop` (in `Dwarf.Cli`). Library/host split per the Phase E doc recommendation: the library stays platform-agnostic; the host (`Dwarf.Cli`) chains `.UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args)` at boot.
+- **`Dwarf.UI.Avalonia` is now a real Avalonia library** — `<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>` for codegen-backed bindings, `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` for the pixel-copy fast paths in `IDisplaySource` implementations.
+- **`App.axaml` + `App.axaml.cs`** — minimal Avalonia application root with the FluentTheme. `BuildAvaloniaApp()` returns an unconfigured `AppBuilder.Configure<App>()`; the host chains platform-specific options.
+- **`MainWindow.axaml` + `.cs`** — 1024×768 window containing a single `DisplayControl`. The code-behind wires a `DiagonalStripesSource(1024, 768)` to it as the placeholder source. The real source (binding to `Mem.getDisplayRealMemory()` after engine init) lands when Duchess.cs is reshaped to drive the Avalonia UI.
+- **`Controls/IDisplaySource.cs`** — the engine→UI boundary for the display data path. Publishes `Width` / `Height` and `CopyToBgra8888(nint destination, int rowBytes)`. The choice of BGRA8888 for the prototype means both monochrome and 8-bit color sources will expand into 32-bpp on the fly during the copy; perf-permitting we may move monochrome to `PixelFormat.Gray8` later for a 4× memory-bandwidth win. **DECISIONS.md §5 + RISKS.md R2** noted inline.
+- **`Controls/DiagonalStripesSource.cs`** — emits 16-pixel-wide diagonal black/white stripes via direct pointer arithmetic on the locked framebuffer. Verifies the prototype renders something recognizable.
+- **`Controls/DisplayControl.cs`** — custom `Control` subclass with a `WriteableBitmap` matched to the source's pixel dimensions. `Render(DrawingContext)` locks the bitmap, calls `Source.CopyToBgra8888(fb.Address, fb.RowBytes)`, and `DrawImage`s it stretched to the control bounds. `MeasureOverride` returns the source dimensions so layout gives a 1:1 pixel mapping by default.
+- **`Dwarf.Cli/Program.cs`** — adds a `-gui` mode (separate from `-duchess` / `-draco`). The `-gui` mode launches the Avalonia prototype without booting the engine; this isolates the rendering pipeline so the prototype can be iterated independently. Later sessions wire it into a true `-duchess` GUI mode.
+- **3 new tests in `DisplayPipelineTests.cs`** — verify (a) source dimensions, (b) the BGRA pattern at three known pixel positions plus alpha-opaque-everywhere, (c) that the source respects `rowBytes` stride (no over-writes past the end of each row). These run without Avalonia.Headless; the full render path is verified manually via `-gui`.
+- **`Dwarf.Tests.csproj` now references `Dwarf.UI.Avalonia`** so the pipeline tests can reach the Controls namespace. Test project also gets `AllowUnsafeBlocks=true` for the pointer-write helpers in the tests.
+- **Pending perf measurement (RISKS R2)** — the prototype renders without engine integration, so end-to-end paint time hasn't been measured yet. Once a `MemDisplaySource` is wired (engine writes display memory → `CopyToBgra8888` expands into BGRA), measure: time the `Render` method across 1000 frames on Dawn or XDE (when a disk artifact is available). Target < 5 ms per frame at 1024×768 monochrome. Fallback: SkiaSharp direct-draw.
+
+**Phase E progress**: 3 of 12 sub-tasks done (Avalonia packages added, DisplayControl prototype, headless-friendly tests). Remaining biggies: KeyboardMapper (~442 LOC Java port + `.map` parser + Avalonia Key→VK adapter), KeyHandler + MouseHandler wiring, UiRefresher (DispatcherTimer 20ms), WindowStateHandler (pause refresh on focus loss), fullscreen toggle, and the full Duchess reshape to drive Avalonia from the engine.
+
+**Next session pick-up**: choose between (a) **KeyboardMapper + KeyHandler** — port the `.map` file parser and wire Avalonia `KeyDown`/`KeyUp` events to `KeyboardAgent`. Largest single-file unit at ~450 LOC. (b) **UiRefresher + MemDisplaySource** — bind `DisplayControl` to actual engine display memory, measure paint time (closes RISKS R2). (c) **MouseHandler** — smaller, but unblocks interactive use. (b) is highest-value since it closes the riskiest unknown.
