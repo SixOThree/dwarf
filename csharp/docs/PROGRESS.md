@@ -2,7 +2,7 @@
 
 **Current phase**: E (Avalonia UI for Duchess) — Phase D paused at 12/14 sub-tasks; D-13/D-14 verification milestones await Duchess-compatible disk artifacts
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase E — MemDisplaySource + paint-time benchmark closes RISKS R2 at 0.891 ms/frame; 642 tests passing)
+**Last session**: 2026-05-13 (Phase E — KeyboardMapper + eKeyEventCode + AvaloniaKeyMap + KeyHandler; 14 keyboard tests; 656 tests passing)
 
 ## Phase status
 
@@ -311,3 +311,21 @@ See `02-phase-b-opcodes.md` for details.
 - **(c) MouseHandler** — smallest at ~130 LOC. Unblocks interactive use once keyboard works.
 
 Recommendation: **(a)** — keyboard is on the critical path for any meaningful interactive use, and the .map file parser is the largest remaining mechanical port in Phase E.
+
+### 2026-05-13 (Phase E — KeyboardMapper + KeyHandler infrastructure)
+
+- **All 656 tests pass** (was 642; +14 new in this session — 5 eKeyEventCode/AvaloniaKeyMap translation tests, 9 KeyboardMapper press/release-semantics tests including Ctrl-modifier behavior and `.map` file parsing).
+- **`Input/eKeyEventCode.cs`** (~190 LOC) — port of `eKeyEventCode.java` (191 entries). Sealed class with `public static readonly` field per VK_* constant (same pattern as `eLevelVKey`); name<->code lookup dictionaries built reflectively in the static constructor from the field metadata. Names and codes match Java AWT verbatim so existing `keyboard-maps/*.map` files work without rewriting. Java's `eKeyEventCode.valueOf(name)` and `eKeyEventCode.get(code).toString()` map to `valueOf` and `getName`.
+- **`Input/AvaloniaKeyMap.cs`** — bridge from `Avalonia.Input.Key` enum to AWT VK_* integer codes. Single switch-expression covering letters (A-Z), digits (D0-D9 + NumPad0-NumPad9), function keys (F1-F24), modifiers (Shift/Ctrl/Alt/Win — both sides folded to the same VK_* since AWT doesn't distinguish sides), navigation (arrows / Home / End / PageUp / PageDown), and common OEM punctuation. Unmapped keys return `null` and KeyboardMapper drops them. Dead keys and uncommon international keys deferred per RISKS R6.
+- **`Input/KeyboardMapper.cs`** (~330 LOC) — direct port of `KeyboardMapper.java`. Java `HashMap<Integer, eLevelVKey>` becomes `Dictionary<int, eLevelVKey?>` (nullable to preserve the "host key held but mesa key already released by Ctrl-up" sentinel pattern). `mapDefaults_de_DE()` preserved verbatim; `loadConfigFile(filename)` parses the `.map` format (key : MesaKey, with optional `Ctrl!` prefix, hex `xHHHHHHHH` or named `VK_xxx`). `getLevelVKey(name)` uses reflection over `eLevelVKey`'s static fields. Java's `Config.LOG_BITBLT_INSNS` F1-toggle preserved as dead code for diff fidelity.
+- **`Input/KeyHandler.cs`** (~130 LOC) — Avalonia-native `KeyDown`/`KeyUp` event listener. `Attach(InputElement)` / `Detach(InputElement)` for wiring; tracks pressed keys in a `HashSet<int>` for the dead-key workaround (Linux compositors that swallow KeyDown for diacritic dead-key start chars). `HashSet.Remove` returns whether the element was present, which lets us replace Java's `if (contains) remove(); else synth-press` with a single `if (!Remove)` (CA1868 compliant).
+- **Java upstream's `keyTyped(char)` handler** (lines 130-140 of Java's `KeyHandler.java`) which translates dead-key chars (0xFFFD, ` `) into specific AWT codes is **not ported**. Avalonia's TextInput pipeline differs from AWT and the same dead-key suppression problem may not manifest. Defer to interactive Linux testing.
+- **No wiring of `KeyHandler` to `MainWindow` yet** — that lands when `Duchess.cs` is reshaped to drive Avalonia. The pieces are in place; `MainWindow` constructor can do `new KeyHandler(km).Attach(this)` once a `KeyboardMapper` is wired to the engine's `iUiDataConsumer`.
+
+**Phase E progress**: 9 of 12 sub-tasks done (Avalonia packages, App/MainWindow shell, DisplayControl prototype, MemDisplaySource, RISKS R2 closed, eKeyEventCode, AvaloniaKeyMap, KeyboardMapper, KeyHandler). Remaining: **UiRefresher** (DispatcherTimer-driven), **MouseHandler** (~130 LOC), **WindowStateHandler** (focus-loss pause), **fullscreen toggle**, and the **Duchess reshape** to drive Avalonia from a running engine.
+
+**Next session pick-up — two viable paths**:
+- **(a) MouseHandler + UiRefresher + Duchess Avalonia reshape** — the final wiring step. After this, `-gui` boots a real Duchess in Avalonia. MouseHandler is small (~130 LOC). UiRefresher is a `DispatcherTimer` that calls `DisplayControl.InvalidateVisual()` every 20 ms. The Duchess reshape splits `Duchess.cs` into a "headless" and "Avalonia" path — the existing headless variant becomes one branch; the new GUI branch starts a background thread running `Cpu.processor()` and uses the existing agent wiring with the Avalonia UI sink. Still needs disk artifacts to do anything useful, but the harness becomes a real GUI Duchess.
+- **(b) WindowStateHandler + fullscreen toggle** — polish items; small. Could be done in parallel with (a) but doesn't unblock anything by itself.
+
+Recommendation: **(a)** — gets the interactive boot path complete. Then Phase E is essentially "ready for testing" pending a Duchess-compatible disk image.

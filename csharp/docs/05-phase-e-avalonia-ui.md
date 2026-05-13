@@ -173,8 +173,8 @@ Manual UI-checks (do these in a session — don't skip!):
 - [x] Add Avalonia NuGet packages to `Dwarf.UI.Avalonia` + entry to `Dwarf.Cli` (Avalonia 11.3.15)
 - [x] **Prototype `DisplayControl`** with `WriteableBitmap` — pixel-copy pipeline verified via 3 unit tests + 9 MemDisplaySource correctness tests + `-gui` visual smoke test. **Paint time measured: 0.891 ms/frame at 960×720 mono (extrapolated ~1.01 ms at 1024×768), 5× under the 5 ms target → RISKS R2 closed.** No SkiaSharp fallback needed.
 - [x] Implement `App.axaml` + `MainWindow.axaml` shell (minimal — menu/toolbar/status-bar are deferred until needed)
-- [ ] Port `KeyboardMapper` + `.map` file parser; embed maps as resources
-- [ ] Port `KeyHandler` (Avalonia `KeyDown`/`KeyUp` → KeyboardAgent)
+- [x] Port `KeyboardMapper` + `.map` file parser — `eKeyEventCode` (191 AWT VK_* constants) + `AvaloniaKeyMap` (Avalonia.Key → AWT VK_* bridge) + `KeyboardMapper` (mappings + press/release with Ctrl-modifier semantics + `.map` file parsing) all landed. `.map` file embedding deferred — current path uses a filesystem path; resource-embedding can be added when the Avalonia Duchess reshape lands.
+- [x] Port `KeyHandler` (Avalonia `KeyDown`/`KeyUp` → KeyboardMapper) — `Attach(InputElement)` / `Detach(InputElement)` wire to any Avalonia visual. Dead-key workaround (synthetic press + 50 ms `Task.Delay` release) ported; the Java `keyTyped` dead-key char handler (lines 130-140 Java upstream) deferred per RISKS R6 (test on Linux first).
 - [ ] Port `MouseHandler` (Avalonia pointer events → MouseAgent)
 - [ ] Implement `UiRefresher` (DispatcherTimer 20 ms)
 - [ ] Implement `WindowStateHandler` (pause refresh on focus loss)
