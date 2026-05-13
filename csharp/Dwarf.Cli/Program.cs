@@ -26,6 +26,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 using Avalonia;
+using Dwarf.Engine;
 
 // Main program for the Dwarf Mesa emulator family.
 //
@@ -85,7 +86,17 @@ if (modeCount != 1)
 
 if (isGui)
 {
-    // Phase E prototype: launch the Avalonia window with the test pattern.
+    // Phase E prototype: bind the Avalonia window to actual engine display
+    // memory. Init Mem with the default Guam configuration (PrincOps min
+    // real + virtual bits, 960×720 mono). The diamond/X test pattern from
+    // Mem.initializeDisplayMemoryGuam shows up — confirms the rendering
+    // pipeline reaches all the way into the engine's framebuffer.
+    Mem.initializeMemoryGuam(
+        PrincOpsDefs.MIN_REAL_ADDRESSBITS,
+        PrincOpsDefs.MIN_REAL_ADDRESSBITS + 1,
+        DisplayType.monochrome,
+        960, 720);
+
     return Dwarf.UI.Avalonia.App.BuildAvaloniaApp()
         .UsePlatformDetect()
         .LogToTrace()

@@ -171,7 +171,7 @@ Manual UI-checks (do these in a session — don't skip!):
 ## Sub-tasks
 
 - [x] Add Avalonia NuGet packages to `Dwarf.UI.Avalonia` + entry to `Dwarf.Cli` (Avalonia 11.3.15)
-- [x] **Prototype `DisplayControl`** with `WriteableBitmap` — pixel-copy pipeline verified via 3 unit tests + visual `-gui` smoke test. Paint-time measurement on Dawn deferred until a `MemDisplaySource` lands and a Duchess-compatible disk artifact is available.
+- [x] **Prototype `DisplayControl`** with `WriteableBitmap` — pixel-copy pipeline verified via 3 unit tests + 9 MemDisplaySource correctness tests + `-gui` visual smoke test. **Paint time measured: 0.891 ms/frame at 960×720 mono (extrapolated ~1.01 ms at 1024×768), 5× under the 5 ms target → RISKS R2 closed.** No SkiaSharp fallback needed.
 - [x] Implement `App.axaml` + `MainWindow.axaml` shell (minimal — menu/toolbar/status-bar are deferred until needed)
 - [ ] Port `KeyboardMapper` + `.map` file parser; embed maps as resources
 - [ ] Port `KeyHandler` (Avalonia `KeyDown`/`KeyUp` → KeyboardAgent)

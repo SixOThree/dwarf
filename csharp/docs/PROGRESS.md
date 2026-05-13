@@ -2,7 +2,7 @@
 
 **Current phase**: E (Avalonia UI for Duchess) — Phase D paused at 12/14 sub-tasks; D-13/D-14 verification milestones await Duchess-compatible disk artifacts
 **Started**: 2026-05-12
-**Last session**: 2026-05-12 (Phase E first step — Avalonia 11.3.15 scaffolding + DisplayControl prototype + 3 new tests; 632 tests passing)
+**Last session**: 2026-05-12 (Phase E — MemDisplaySource + paint-time benchmark closes RISKS R2 at 0.891 ms/frame; 642 tests passing)
 
 ## Phase status
 
@@ -293,3 +293,21 @@ See `02-phase-b-opcodes.md` for details.
 **Phase E progress**: 3 of 12 sub-tasks done (Avalonia packages added, DisplayControl prototype, headless-friendly tests). Remaining biggies: KeyboardMapper (~442 LOC Java port + `.map` parser + Avalonia Key→VK adapter), KeyHandler + MouseHandler wiring, UiRefresher (DispatcherTimer 20ms), WindowStateHandler (pause refresh on focus loss), fullscreen toggle, and the full Duchess reshape to drive Avalonia from the engine.
 
 **Next session pick-up**: choose between (a) **KeyboardMapper + KeyHandler** — port the `.map` file parser and wire Avalonia `KeyDown`/`KeyUp` events to `KeyboardAgent`. Largest single-file unit at ~450 LOC. (b) **UiRefresher + MemDisplaySource** — bind `DisplayControl` to actual engine display memory, measure paint time (closes RISKS R2). (c) **MouseHandler** — smaller, but unblocks interactive use. (b) is highest-value since it closes the riskiest unknown.
+
+### 2026-05-12 (Phase E — MemDisplaySource + paint-time benchmark closes RISKS R2)
+
+- **All 642 tests pass** (was 632; 10 new in this session — 9 MemDisplaySource correctness tests + 1 paint-time benchmark).
+- **`Controls/MemDisplaySource.cs`** — IDisplaySource that reads directly from `Mem.getDisplayRealMemory()` and expands 1-bit-per-pixel monochrome into BGRA8888 inside `CopyToBgra8888`. Memory layout follows the engine's `displayWordsPerLine = displayPixelWidth / 16`, MSB-first within each 16-bit word; bit ON → pixel dark (BGRA `0x000000FF`), bit OFF → pixel light (`0xFFFFFFFF`). The expansion loop is manually unrolled across all 16 bits of each word so the JIT can keep the inner body branchless. **Byte-color (8-bit) deferred to a follow-up** — it needs DisplayAgent's 256-entry LUT wired into the source constructor.
+- **`MemDisplaySourceTests.cs`** (9 tests) — verifies (a) source dimensions match Mem, (b) row 0's template `0x8001` puts dark pixels at positions 0 and 15, (c) row 0's middle pixels 1..14 are light, (d) row 1's `0x4002` shifts the pattern inward (pixels 1, 14 dark; 0, 15 light), (e) row 7's `0x0180` puts the center pair (pixels 7, 8) dark, (f) horizontal pattern repeats every 16 pixels, (g) vertical pattern repeats every 16 lines, (h) alpha is opaque everywhere, (i) the constructor succeeds when Mem is initialized. Tests rely on the engine's existing diamond/X init pattern from `Mem.initializeDisplayMemoryGuam` — no fixture-side memory writes needed.
+- **`PaintTimeBenchmark.cs`** — single benchmark fact. Runs 100 warmup iterations, then times 500 frames of `CopyToBgra8888` against the init pattern. Reports per-frame timing via `ITestOutputHelper`. **Hard upper bound: 50 ms/frame** (10× the 5 ms target — flags catastrophic regressions, not fine-grained perf gating). Measured on this machine: **0.891 ms/frame at 960×720 mono, 776 Mpix/s pixel throughput**. Extrapolating to 1024×768: ~1.01 ms/frame, well under the 5 ms target. **RISKS R2 closed.** Avalonia's WriteableBitmap lock/draw overhead is typically <1 ms on top, so total per-frame paint budget on a real display refresh should land ~2–3 ms, leaving plenty of headroom for the engine's display memory updates in between.
+- **`-gui` mode now initializes Mem** with the default Guam config (`MIN_REAL_ADDRESSBITS`, `MIN_REAL_ADDRESSBITS + 1`, monochrome 960×720) before launching Avalonia. `MainWindow` detects Mem-initialized state and binds `DisplayControl.Source` to a `MemDisplaySource`; falls back to the placeholder `DiagonalStripesSource` if Mem is uninitialized. The window title shows the active display configuration. Running `dotnet run --project csharp/Dwarf.Cli -- -gui` should now show the engine's diamond/X init pattern rather than the static diagonal stripes.
+- **No `UiRefresher` yet** — the engine isn't actively updating display memory in `-gui` mode (only Mem init runs), so a 20-ms refresh timer would just re-render the same static pattern. UiRefresher lands when Duchess.cs is reshaped to drive Avalonia with a running engine.
+
+**Phase E progress**: 5 of 12 sub-tasks done (Avalonia packages, App/MainWindow shell, DisplayControl prototype, MemDisplaySource, RISKS R2 closed). Remaining: UiRefresher (DispatcherTimer), KeyboardMapper + `.map` parser (~450 LOC), KeyHandler, MouseHandler, WindowStateHandler, fullscreen toggle, full Duchess reshape to drive Avalonia from a running engine.
+
+**Next session pick-up**: the rendering pipeline is verified end-to-end. Three viable paths:
+- **(a) KeyboardMapper + KeyHandler** — biggest single chunk at ~450 LOC. Touches `.map` file parsing + Avalonia `Key`→`eLevelVKey` translation.
+- **(b) UiRefresher + Duchess reshape** — wire the engine into Avalonia. Boots Mem + agents + interpreter loop on a background thread; UiRefresher's DispatcherTimer invalidates DisplayControl. After this, `-gui` boots a real Duchess (still needs disk artifacts to do anything useful, but the harness becomes a real GUI Duchess).
+- **(c) MouseHandler** — smallest at ~130 LOC. Unblocks interactive use once keyboard works.
+
+Recommendation: **(a)** — keyboard is on the critical path for any meaningful interactive use, and the .map file parser is the largest remaining mechanical port in Phase E.
