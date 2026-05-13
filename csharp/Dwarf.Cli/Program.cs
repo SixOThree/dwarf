@@ -77,18 +77,29 @@ foreach (string arg in args)
     }
 }
 
-// exactly one mode must be selected
-int modeCount = (isDuchess ? 1 : 0) + (isDraco ? 1 : 0) + (isGui ? 1 : 0);
-if (modeCount != 1)
+// At least one mode must be selected; -gui can stand alone (prototype
+// window without engine) or combine with -duchess (full Avalonia
+// Duchess). -draco is exclusive with the others.
+if (!isDuchess && !isDraco && !isGui) { return Usage(); }
+if (isDraco && (isDuchess || isGui)) { return Usage(); }
+
+if (isDuchess && isGui)
 {
-    return Usage();
+    // Duchess in Avalonia: hand engine setup to Duchess.RunGui, which
+    // calls back to launch the Avalonia application after the engine
+    // thread is running.
+    return Dwarf.Duchess.Duchess.RunGui(newArgs.ToArray(), () =>
+        Dwarf.UI.Avalonia.App.BuildAvaloniaApp()
+            .UsePlatformDetect()
+            .LogToTrace()
+            .StartWithClassicDesktopLifetime(newArgs.ToArray()));
 }
 
 if (isGui)
 {
     // Phase E prototype: bind the Avalonia window to actual engine display
-    // memory. Init Mem with the default Guam configuration (PrincOps min
-    // real + virtual bits, 960×720 mono). The diamond/X test pattern from
+    // memory but with no engine running. Init Mem with the default Guam
+    // configuration; the diamond/X test pattern from
     // Mem.initializeDisplayMemoryGuam shows up — confirms the rendering
     // pipeline reaches all the way into the engine's framebuffer.
     Mem.initializeMemoryGuam(

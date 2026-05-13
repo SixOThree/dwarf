@@ -2,7 +2,7 @@
 
 **Current phase**: E (Avalonia UI for Duchess) — Phase D paused at 12/14 sub-tasks; D-13/D-14 verification milestones await Duchess-compatible disk artifacts
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase E — KeyboardMapper + eKeyEventCode + AvaloniaKeyMap + KeyHandler; 14 keyboard tests; 656 tests passing)
+**Last session**: 2026-05-13 (Phase E — MouseHandler + UiRefresher + Duchess Avalonia reshape; -duchess -gui boots a real engine in Avalonia; 656 tests passing)
 
 ## Phase status
 
@@ -329,3 +329,26 @@ Recommendation: **(a)** — keyboard is on the critical path for any meaningful 
 - **(b) WindowStateHandler + fullscreen toggle** — polish items; small. Could be done in parallel with (a) but doesn't unblock anything by itself.
 
 Recommendation: **(a)** — gets the interactive boot path complete. Then Phase E is essentially "ready for testing" pending a Duchess-compatible disk image.
+
+### 2026-05-13 (Phase E — MouseHandler + UiRefresher + Duchess Avalonia reshape)
+
+- **All 656 tests still pass.** No new unit tests this session — MouseHandler and UiRefresher rely on Avalonia event types whose construction needs `Avalonia.Headless` package. End-to-end interactive verification via `dotnet run --project csharp/Dwarf.Cli -- -duchess -gui <config.properties>` is the integration test; that path will be exercised once a Duchess-compatible disk artifact is available.
+- **`Input/MouseHandler.cs`** (~155 LOC) — Avalonia `PointerMoved` / `PointerPressed` / `PointerReleased` / `PointerEntered` / `PointerExited` listener. Translates Avalonia pointer coordinates to mesa coordinates clamped to display bounds. Button mapping: Avalonia `PointerUpdateKind.{Left,Middle,Right}ButtonPressed` to AWT-style button IDs 1/2/3; on PointerReleased, `InitialPressMouseButton` reliably reports the released button. Java upstream's "grab focus on any mouse event" is omitted — Avalonia raises focus implicitly when the receiving control has `Focusable=true`.
+- **`UiRefresher.cs`** (~75 LOC) — minimal `DispatcherTimer` at 20 ms intervals (~50 Hz) that calls `target.InvalidateVisual()`. Start/Stop and Paused. Java upstream was ~270 LOC with status bar / MP / stats; the polish bits land when MainWindow grows a status bar.
+- **`GuiSession.cs`** in `Dwarf.UI.Avalonia` — carrier for the engine/UI handshake. Holds `iUiDataConsumer`, `KeyboardMapper`, display dimensions. Host (`Duchess.RunGui`) publishes via `GuiSession.Current` before launching Avalonia; MainWindow reads `Current` to wire handlers. Lives in `Dwarf.UI.Avalonia` so the MainWindow's project graph stays acyclic (`Dwarf.Duchess -> Dwarf.UI.Avalonia`, never the reverse).
+- **`Dwarf.Duchess/Duchess.cs` refactored** — engine setup extracted into a private `setupEngine()` helper shared between headless `Main` and `RunGui(args, Func<int> avaloniaLauncher)`. The host-supplied launcher callback lets Duchess invoke Avalonia without depending on `Avalonia.Desktop` itself (that package lives in Dwarf.Cli only). Engine runs on a background `Thread`; after Avalonia's main loop exits, RunGui requests engine stop, joins the thread, and shuts down agents.
+- **`Dwarf.Cli/Program.cs`** — mode parsing extended: when both `-duchess` and `-gui` are present, dispatch to `Duchess.RunGui` with the Avalonia launcher closure. `-gui` alone keeps the prototype path; `-duchess` alone keeps headless; `-draco` exclusive with the others.
+- **`MainWindow.axaml.cs`** updated — three modes: (1) `GuiSession.Current != null` -> wire KeyHandler+MouseHandler+UiRefresher, start refresher on Opened, stop + request engine stop on Closing; (2) Mem initialized but no session -> static MemDisplaySource; (3) Nothing initialized -> DiagonalStripesSource fallback.
+
+**Phase E status**: the **interactive Duchess GUI is wired**. `dotnet run -- -duchess -gui <config>` should now boot a real Duchess in an Avalonia window with keyboard + mouse input flowing through to the mesa engine. Remaining gaps:
+- **Boot Pilot to login screen** — verification milestone, awaits Duchess-compatible disk artifact.
+- **WindowStateHandler + fullscreen toggle** — polish.
+- **Status bar / MP display / statistics** — polish (UiRefresher only invalidates display).
+- **Embed .map files as resources** — currently filesystem path via `keyboardMapFile` config.
+
+**Next session pick-up — three viable paths**:
+- **(a) Phase F (Draco port)** — 13 IOP/IORegion files + 8 device handlers (~6.5 KLOC Java). The `disks-6085/` directory has 3 ViewPoint/XDE disks ready. After Draco lands, the D-13/D-14 verification can be done with Draco disks.
+- **(b) Phase E polish** — WindowStateHandler, fullscreen toggle, status bar, .map file resource embedding. Improves ergonomics; doesn't unblock new functionality.
+- **(c) Acquire a Duchess disk artifact** — then D-13 (boot Pilot to login) and D-14 (NetHub round-trip) close out Phase D.
+
+Recommendation: **(a)** — Phase F unlocks the largest remaining body of work and the existing 6085 disk artifacts. The Avalonia UI library is re-usable for Draco with minimal changes.

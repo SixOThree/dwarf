@@ -78,6 +78,7 @@ public static class Duchess
     private static string? framebufferOutPath = null;
     private static long framebufferIntervalMs = 1000;
 
+
     // load the mesa engine configuration from the given file
     private static bool initializeConfiguration(string filename)
     {
@@ -276,8 +277,53 @@ public static class Duchess
             return 0;
         }
 
-        // setup the mesa machine
+        // set up the mesa machine, agents, germ, boot request
+        setupEngine();
 
+        // wire the headless display sink. The engine's checkForTimeouts will
+        // call back to this at ~37 ms intervals.
+        var sink = new HeadlessDisplaySink(framebufferOutPath, framebufferIntervalMs);
+        Processes.registerUiRefreshCallback(sink);
+
+        // handle Ctrl-C by requesting a graceful engine stop
+        Console.CancelKeyPress += (sender, e) =>
+        {
+            e.Cancel = true; // don't terminate the process immediately
+            Console.WriteLine("\n[harness] Ctrl-C — requesting mesa engine stop...");
+            Processes.requestMesaEngineStop();
+        };
+
+        // run the mesa engine on a background thread. The main thread waits
+        // for it to exit.
+        Console.WriteLine($"[harness] Booting {title}");
+        Console.WriteLine($"[harness] Press Ctrl-C to stop the mesa engine gracefully.");
+
+        var engineThread = new Thread(() =>
+        {
+            string finalMessage = Cpu.processor();
+            Console.WriteLine($"\n***\n*** processor exited: {finalMessage}\n***");
+        });
+        engineThread.IsBackground = false;
+        engineThread.Name = "Mesa-Engine";
+        engineThread.Start();
+        engineThread.Join();
+
+        // shutdown the agents to save changes to the harddisk and floppy
+        var errMsgs = new System.Text.StringBuilder();
+        AgentsClass.shutdown(errMsgs);
+        if (errMsgs.Length > 0)
+        {
+            Console.Error.WriteLine($"\n***\n*** Error(s) shutting down mesa engine devices: {errMsgs}\n***");
+        }
+
+        return 0;
+    }
+
+    // Set up the mesa machine, agents, germ, boot request — shared between
+    // Main (headless) and RunGui. Reads from the static config fields
+    // populated by `initializeConfiguration`.
+    private static void setupEngine()
+    {
         // set processor id (aka MAC address)
         Cpu.setPID(macWords[0], macWords[1], macWords[2]);
 
@@ -322,43 +368,128 @@ public static class Duchess
         InitialMesaMicrocode.loadGerm(germFile!, true);
         InitialMesaMicrocode.setBootRequestDisk(0); // boot the (first) disk
         InitialMesaMicrocode.setBootSwitches(switches);
+    }
 
-        // wire the headless display sink. The engine's checkForTimeouts will
-        // call back to this at ~37 ms intervals.
-        var sink = new HeadlessDisplaySink(framebufferOutPath, framebufferIntervalMs);
-        Processes.registerUiRefreshCallback(sink);
+    // GUI entry point: same engine setup as headless Main, then invokes
+    // the host-supplied `avaloniaLauncher` (which calls the Avalonia
+    // bootstrap). Invoked by Dwarf.Cli when both `-duchess` and `-gui`
+    // flags are present.
+    //
+    // The callback indirection lets Dwarf.Duchess stay free of the
+    // `Avalonia.Desktop` package dependency (`UsePlatformDetect()` lives
+    // there). The launcher returns the Avalonia exit code.
+    //
+    // Threading: Avalonia owns the main thread; the mesa engine runs on a
+    // dedicated background thread (`Cpu.processor()`). The MainWindow's
+    // `Closing` handler requests engine stop; after Avalonia returns, we
+    // join the engine thread and shut down agents.
+    public static int RunGui(string[] args, Func<int> avaloniaLauncher)
+    {
+        bool doMerge = false;
+        string? cfgFile = null;
+        bool dumpConfig = false;
 
-        // handle Ctrl-C by requesting a graceful engine stop
-        Console.CancelKeyPress += (sender, e) =>
+        foreach (string arg in args)
         {
-            e.Cancel = true; // don't terminate the process immediately
-            Console.WriteLine("\n[harness] Ctrl-C — requesting mesa engine stop...");
-            Processes.requestMesaEngineStop();
-        };
+            if (!arg.StartsWith('-'))
+            {
+                if (cfgFile == null) { cfgFile = arg; }
+                else { Console.WriteLine($"Warning: ignoring unknown argument: {arg}"); }
+            }
+        }
 
-        // run the mesa engine on a background thread. The main thread waits
-        // for it to exit.
-        Console.WriteLine($"[harness] Booting {title}");
-        Console.WriteLine($"[harness] Press Ctrl-C to stop the mesa engine gracefully.");
+        if (cfgFile == null)
+        {
+            Console.Error.WriteLine("Error: no configuration specified.");
+            Console.Error.WriteLine("Usage: Dwarf -duchess -gui <config.properties> [-v] [-merge]");
+            return 1;
+        }
+        if (!initializeConfiguration(cfgFile))
+        {
+            return 1;
+        }
 
+        for (int i = 0; i < args.Length; i++)
+        {
+            string lower = args[i].ToLowerInvariant();
+            if (lower == "-v") { dumpConfig = true; }
+            else if (lower == "-merge") { doMerge = true; }
+        }
+        if (dumpConfig) { dumpConfiguration(); }
+
+        if (doMerge)
+        {
+            DiskState diskState = DiskAgent.addFile(bootFile!, false, oldDeltasToKeep);
+            if (diskState == DiskState.ReadOnly)
+            {
+                Console.WriteLine($"Bootdisk '{bootFile}' is readonly and cannot be merged, aborting!");
+            }
+            else if (diskState == DiskState.Corrupted)
+            {
+                Console.WriteLine($"Bootdisk '{bootFile}' has corrupted delta and cannot be merged, aborting!");
+            }
+            else
+            {
+                DiskAgent.mergeDisks(Console.Out);
+            }
+            return 0;
+        }
+
+        // set up the engine
+        setupEngine();
+
+        // build the iUiDataConsumer + KeyboardMapper for the UI side
+        iUiDataConsumer consumer = AgentsClass.getUiCallbacks();
+        var keyMapper = new Dwarf.UI.Avalonia.Input.KeyboardMapper(
+            consumer, Dwarf.UI.Avalonia.Input.eKeyEventCode.VK_CONTROL.Code, logKeypressed: false);
+        if (!string.IsNullOrEmpty(keyboardMapFile))
+        {
+            keyMapper.loadConfigFile(keyboardMapFile);
+        }
+        else
+        {
+            keyMapper.mapDefaults_de_DE();
+        }
+
+        // publish the session so MainWindow can wire handlers when constructed
+        Dwarf.UI.Avalonia.GuiSession.Current = new Dwarf.UI.Avalonia.GuiSession(
+            consumer, keyMapper, displayWidth, displayHeight);
+
+        Console.WriteLine($"[harness] Booting {title} (Avalonia GUI)");
+
+        // start the engine on a background thread
         var engineThread = new Thread(() =>
         {
             string finalMessage = Cpu.processor();
             Console.WriteLine($"\n***\n*** processor exited: {finalMessage}\n***");
-        });
-        engineThread.IsBackground = false;
-        engineThread.Name = "Mesa-Engine";
-        engineThread.Start();
-        engineThread.Join();
-
-        // shutdown the agents to save changes to the harddisk and floppy
-        var errMsgs = new System.Text.StringBuilder();
-        AgentsClass.shutdown(errMsgs);
-        if (errMsgs.Length > 0)
+        })
         {
-            Console.Error.WriteLine($"\n***\n*** Error(s) shutting down mesa engine devices: {errMsgs}\n***");
+            IsBackground = false,
+            Name = "Mesa-Engine",
+        };
+        engineThread.Start();
+
+        // launch the Avalonia application — blocks until window closes
+        int exitCode;
+        try
+        {
+            exitCode = avaloniaLauncher();
+        }
+        finally
+        {
+            // ask the engine to halt and wait for it
+            Processes.requestMesaEngineStop();
+            engineThread.Join();
+
+            // shutdown the agents to save changes to the harddisk and floppy
+            var errMsgs = new System.Text.StringBuilder();
+            AgentsClass.shutdown(errMsgs);
+            if (errMsgs.Length > 0)
+            {
+                Console.Error.WriteLine($"\n***\n*** Error(s) shutting down mesa engine devices: {errMsgs}\n***");
+            }
         }
 
-        return 0;
+        return exitCode;
     }
 }
