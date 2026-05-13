@@ -25,6 +25,7 @@ OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+using Dwarf.Agents;
 using Dwarf.Duchess; // shared PropertiesExt + Utils
 using Dwarf.Engine;
 using Dwarf.Iop6085;
@@ -312,7 +313,8 @@ public static class DracoHost
         // set processor id (aka MAC address)
         Cpu.setPID(macWords[0], macWords[1], macWords[2]);
 
-        // TODO Phase F-5: HEthernet.setHubParameters(netHubHost, netHubPort, localTimeOffsetMinutes);
+        // configure the network handler before the IOP instantiates it
+        HEthernet.setHubParameters(netHubHost, netHubPort, localTimeOffsetMinutes);
 
         // initialize the memory subsystem with the configured display size
         Mem.initializeMemoryDaybreak(largeScreen);
@@ -380,7 +382,7 @@ public static class DracoHost
         // adjust absolute date
         long timeShiftSeconds = -86400L * daysBackInTime;
         HProcessor.setTimeShiftSeconds(timeShiftSeconds);
-        // TODO Phase F-5: NetworkInternalTimeService.setTimeShiftSeconds(timeShiftSeconds);
+        NetworkInternalTimeService.setTimeShiftSeconds(timeShiftSeconds);
 
         // TODO Phase F+: Cpu.setMPHandler(new DebuggerSubstituteMpHandler(stopOnNetDebug));
 

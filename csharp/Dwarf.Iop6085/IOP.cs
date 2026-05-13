@@ -59,7 +59,7 @@ public static class IOP
     private static HKeyboardMouse? hKeyMo;
     private static HDisk? hDisk;
     // private static HFloppy? hFloppy;          // TODO Phase F-4b
-    // private static HEthernet? hEthernet;      // TODO Phase F-5
+    private static HEthernet? hEthernet;
     private static HTTY? hTty;
     private static HProcessor? hProcessor;
 
@@ -117,11 +117,11 @@ public static class IOP
         // iorTable.segments[IOPTypes.HandlerID_floppy].ioRegionSegment.set(fcbSegment);
         // devHandlers.Add(hFloppy);
 
-        // TODO Phase F-5 — device handler for network
-        // hEthernet = new HEthernet();
-        // fcbSegment = hEthernet.getFcbSegment();
-        // iorTable.segments[IOPTypes.HandlerID_ethernet].ioRegionSegment.set(fcbSegment);
-        // devHandlers.Add(hEthernet);
+        // device handler for network
+        hEthernet = new HEthernet();
+        fcbSegment = hEthernet.getFcbSegment();
+        iorTable.segments[IOPTypes.HandlerID_ethernet].ioRegionSegment.set(fcbSegment);
+        devHandlers.Add(hEthernet);
 
         // device handler for tty
         hTty = new HTTY();
@@ -312,8 +312,8 @@ public static class IOP
         public int getDiskWrites() => hDisk?.getWrites() ?? 0;
         public int getFloppyReads() => 0;   // TODO Phase F-4b — hFloppy?.getReads() ?? 0
         public int getFloppyWrites() => 0;  // TODO Phase F-4b — hFloppy?.getWrites() ?? 0
-        public int getNetworkpacketsSent() => 0;     // TODO Phase F-5 — hEthernet?.getPacketsSentCount() ?? 0
-        public int getNetworkpacketsReceived() => 0; // TODO Phase F-5 — hEthernet?.getPacketsReceivedCount() ?? 0
+        public int getNetworkpacketsSent() => hEthernet?.getPacketsSentCount() ?? 0;
+        public int getNetworkpacketsReceived() => hEthernet?.getPacketsReceivedCount() ?? 0;
     }
 
     /*

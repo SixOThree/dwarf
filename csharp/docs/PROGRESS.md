@@ -2,7 +2,7 @@
 
 **Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-4 — HDisk read-only path + DracoHost orchestration; `-draco` and `-draco -gui` CLI dispatch live; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase F-5 — HEthernet; reuses NetworkHubInterface/NetworkInternalTimeService from Phase D; 656 tests still passing)
 
 ## Phase status
 
@@ -442,6 +442,40 @@ Recommendation: **(a)** — completes the visible/interactive Draco harness soon
 - **(b) HFloppy (Phase F-4b)** — ~1770 LOC Java; ~600 LOC after dropping legacy IMD/DMK per RISKS R7. Needed for ViewPoint's "Install Software" workflow but not for daily boot.
 
 Recommendation: **(a)** — HEthernet completes the Phase F functional surface for everything except floppies. After this, the partial Draco can run XNS-networked workflows. HFloppy (b) is independent and can land any time before Phase G; defer it until/unless someone hits the install-from-floppy workflow.
+
+### 2026-05-13 (Phase F-5 — HEthernet; NetHub interop reused from Phase D)
+
+- **All 656 tests still pass.** No new unit tests; HEthernet is integration-tested by booting a networked ViewPoint/XDE.
+- **`Dwarf.Iop6085/HEthernet.cs`** (~750 LOC C# from 966 LOC Java) — full handler port. Wraps the existing `Dwarf.Agents.NetworkHubInterface` / `NetworkInternalTimeService` / `iNetDeviceInterface` from Phase D-11 — the underlying wire protocol stays bit-identical (RISKS R4 is still open but no new code surface).
+- **6 architecturally interesting sections**:
+  - **FCB** (~80 LOC of layout) — `EHF_SystemControlBlock` (8 words with bitfields), `NonMesaContext` (160 words of stand-in space), 2 `QueueBlock`s (mesa-in / mesa-out), 4 semaphore words for queue locking, 3 NotifyMasks (in/out/lock), plus client-state words.
+  - **IOCB** (~50 LOC) — 14 words with overlapping CommandSelect at words 7..13. `op_io_address` / `op_io_length` / `op_io_count` for the I/O variant. Status flags packed into bits of `w6`. 5 op-types: command(0), output(1), reset(2), startRU(3), input(15).
+  - **`processNotify`** (~250 LOC) — dispatches on whether the notify mask is the "in" or "out" work mask. Out-queue handles output/reset/command/startRU; in-queue scans for new input-IOCBs to enqueue for receive. Stop-transmissions on `mesaClientStateRequest == off` drains the netIf and clears the receive queue. **Bug-preserved**: Java upstream's de-dup-by-buffer-address `enqueueReceiveIocb` calls `receiveIocbs.remove(iocb)` on the *new* IOCB which isn't in the list yet — same audit-comment as Phase D-11 NetworkAgent.
+  - **`handleLockmem`** (~30 LOC) — 4-state semaphore machine for queue locking. Phase 1 (iop semaphore) is a no-op log; phase 2 (mesa semaphore) clears the iop semaphore.
+  - **`refreshMesaMemory`** (~80 LOC) — drains incoming packets from `netIf.dequeuePacket` and copies into the receive IOCB's buffer (with byte-swap from network big-endian to Mesa word order). Raises one mesa interrupt for the batch.
+  - **`loadFileFromBootService`** (~140 LOC) — static helper. Sends a `simpleRequest` boot packet (XNS BOOT socket 10, packet type 9), then reads `simpleData` response packets and assembles the germ. Used by Java's `-netinstall` / `-netexec` modes; in the C# port it's wired-but-unreachable until DracoHost's netboot path lands (currently emits a "Phase F-5" warning instead).
+- **Port deviations**:
+  - Java `LinkedList<Integer>` (Queue interface) → C# `List<int>`. Java's `LinkedList.remove(Integer.valueOf(iocb))` (remove by value) → C# `List<int>.Remove(int)` (also remove by value). Same semantics; `List<int>` is faster for the typical depth-1 case.
+  - Java `System.nanoTime()` → C# `Stopwatch.GetTimestamp() * 1_000_000_000L / Stopwatch.Frequency`. Same numeric format. Same pattern as Phase D-11 NetworkAgent.
+  - Java `byte[] bootBuffer` static field (1024 bytes) → C# `static readonly byte[]`. The static-field pattern is preserved since `loadFileFromBootService` is itself static.
+  - Java `(short)0x8000` constant cast → C# `const ushort 0x8000`. Same bit pattern in storage; the C# version avoids the signed/unsigned `short` ↔ `ushort` ambiguity.
+  - `STATUS_TRANSMIT_*` constants are `ushort` (Java upstream's `(short)0x9010` casts become unnecessary since the bitmask is set directly into a `ushort`-typed Word).
+  - Java `synchronized refreshMesaMemory` → C# `lock(this)`. Same per-instance lock semantics.
+- **Project graph adjustment**: `Dwarf.Iop6085.csproj` now references `Dwarf.Agents` so HEthernet can reach `iNetDeviceInterface` / `NetworkHubInterface` / `NetworkInternalTimeService`. Same pattern as Java upstream's HEthernet importing from `engine/agents`.
+- **`Dwarf.Iop6085/IOP.cs`** — un-commented the HEthernet instantiation block; `IOPStatisticsProvider.getNetworkpacketsSent/Received` now forward to `hEthernet?.getPacketsSentCount/getPacketsReceivedCount`.
+- **`Dwarf.Draco/DracoHost.cs`** — calls `HEthernet.setHubParameters(netHubHost, netHubPort, localTimeOffsetMinutes)` in `setupEngine()` *before* `IOP.initialize()` (the HEthernet constructor reads the static config). `NetworkInternalTimeService.setTimeShiftSeconds(timeShiftSeconds)` wired alongside `HProcessor.setTimeShiftSeconds` for `daysBackInTime`.
+
+**Phase F progress**: 11 of ~13 sub-tasks done. Remaining:
+- **HFloppy** (Phase F-4b) — ~1770 LOC Java, ~600 LOC C# after dropping legacy IMD/DMK per RISKS R7. Not blocking boot; blocks ViewPoint "Install Software" workflow.
+- **End-to-end ViewPoint/XDE boot validation** — needs a Draco-compatible `.zdisk` artifact.
+- **`-netinstall` / `-netexec` CLI flags** — currently log "requires HEthernet, Phase F-5" — now that HEthernet is in, the wiring is doable, but it also needs the `InitialMesaMicrocode.setBootRequestEthernet` path verified end-to-end. Low value without a real NetBoot service to test against. Deferred until needed.
+
+**Next session pick-up — three viable paths**:
+- **(a) HFloppy (Phase F-4b)** — closes the last functional gap before Phase G. ~600 LOC of meaningful C#. Self-contained; doesn't touch the engine boot path.
+- **(b) Phase G start (polish)** — CI workflow, BenchmarkDotNet on the dispatch hot loop, migration docs. Phase F is "feature-complete pending floppy" already.
+- **(c) Acquire ViewPoint/XDE disk artifact + interactive boot test** — would surface latent F-1..F-5 bugs that unit tests can't catch (e.g., byte-order errors in FCB layout, signed/unsigned drift in IOCB processing). User-driven, not coding-driven.
+
+Recommendation: **(a) HFloppy** — Phase F should land as a fully-functional unit before Phase G starts. The disk-artifact-bound boot test (c) is the natural Phase G-prep validation step *after* HFloppy lands.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 
