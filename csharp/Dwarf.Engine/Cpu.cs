@@ -586,36 +586,105 @@ public static class Cpu
 
     // Default implementation of MesaFaultTrapThrower.
     //
-    // Phase A skeleton: throws MesaERROR with a "Phase C" message. The real
-    // Xfer-based trap dispatch lands in Phase C when Xfer is ported.
+    // Mirrors `engine/Cpu.java:618-757` (RealMesaFaultTrapThrower). Each trap
+    // is routed through `Xfer.impl.xfer(controlLink, Cpu.LF, XferType.xtrap, false)`
+    // after reading the controlLink from the System Data Table (SDT). The
+    // trap kind chooses how the trap parameter is delivered to the OS:
+    //   - trapZero:  no parameter (just transfer)
+    //   - trapOne:   1-word parameter written at LF[0]
+    //   - trapTwo:   2-word parameter written at LF[0] (lo) and LF[1] (hi)
+    //   - escOpcode: special — uses the Escape Trap Table (ETT) instead of SDT
     //
     // Tests install a different thrower (ChkThrower in AbstractInstructionTest)
     // that records the trap kind without throwing.
+    //
+    // Phase F-bug-1 (2026-05-13): replaced the Phase A "requires Xfer (Phase
+    // C)" placeholders with the real implementations. The unit-test suite
+    // never exercised these because tests install ChkThrower; the bug
+    // surfaced when DracoHost.RunGui booted XDE 5.0 — Pilot's natural trap
+    // dispatch hit signalCodeTrap immediately.
     private sealed class RealMesaFaultTrapThrower : MesaFaultTrapThrower
     {
-        private static Exception NotYet(string what) =>
-            new MesaERROR($"RealMesaFaultTrapThrower.{what}: requires Xfer (Phase C)");
+        public void signalBoundsTrap()      => trapZero(PrincOpsDefs.sBoundsTrap);
+        public void signalBreakTrap()       => trapZero(PrincOpsDefs.sBreakTrap);
+        public void signalCodeTrap(int gf)  => trapOne(PrincOpsDefs.sCodeTrap, gf);
+        public void signalControlTrap(int src) => trapOne(PrincOpsDefs.sControlTrap, src);
+        public void signalDivideCheckTrap() => trapZero(PrincOpsDefs.sDivCheckTrap);
+        public void signalDivideZeroTrap()  => trapZero(PrincOpsDefs.sDivZeroTrap);
+        public void signalInterruptError()  => trapZero(PrincOpsDefs.sInterruptError);
+        public void signalOpcodeTrap(int code) => trapOne(PrincOpsDefs.sOpcodeTrap, code);
+        public void signalPointerTrap()     => trapZero(PrincOpsDefs.sPointerTrap);
+        public void signalProcessTrap()     => trapZero(PrincOpsDefs.sProcessTrap);
+        public void signalRescheduleError() => trapZero(PrincOpsDefs.sRescheduleError);
+        public void signalStackError()      => trapZero(PrincOpsDefs.sStackError);
+        public void signalUnboundTrap(int dst) => trapTwo(PrincOpsDefs.sUnboundTrap, dst);
+        public void signalHardwareError()   => trapZero(PrincOpsDefs.sHardwareError);
 
-        public void trap(int controlLinkIdx) => throw NotYet(nameof(trap));
-        public void signalBoundsTrap() => throw NotYet(nameof(signalBoundsTrap));
-        public void signalBreakTrap() => throw NotYet(nameof(signalBreakTrap));
-        public void signalCodeTrap(int gf) => throw NotYet(nameof(signalCodeTrap));
-        public void signalControlTrap(int src) => throw NotYet(nameof(signalControlTrap));
-        public void signalDivideCheckTrap() => throw NotYet(nameof(signalDivideCheckTrap));
-        public void signalDivideZeroTrap() => throw NotYet(nameof(signalDivideZeroTrap));
-        public void signalEscOpcodeTrap(int code) => throw NotYet(nameof(signalEscOpcodeTrap));
-        public void signalInterruptError() => throw NotYet(nameof(signalInterruptError));
-        public void signalOpcodeTrap(int code) => throw NotYet(nameof(signalOpcodeTrap));
-        public void signalPointerTrap() => throw NotYet(nameof(signalPointerTrap));
-        public void signalProcessTrap() => throw NotYet(nameof(signalProcessTrap));
-        public void signalRescheduleError() => throw NotYet(nameof(signalRescheduleError));
-        public void signalStackError() => throw NotYet(nameof(signalStackError));
-        public void signalUnboundTrap(int dst) => throw NotYet(nameof(signalUnboundTrap));
-        public void signalHardwareError() => throw NotYet(nameof(signalHardwareError));
-        public void signalPageFault(int faultingLongPointer) => throw NotYet(nameof(signalPageFault));
-        public void signalWriteProtectFault(int faultingLongPointer) => throw NotYet(nameof(signalWriteProtectFault));
-        public void signalFrameFault(int fsi) => throw NotYet(nameof(signalFrameFault));
+        public void signalEscOpcodeTrap(int code)
+        {
+            // Escape-opcode trap is dispatched through the Escape Trap Table
+            // (ETT), not the System Data Table. The control link is at
+            // `MDS[ETT_base + code*2]`.
+            int controlLink = Mem.readMDSDblWord(PrincOpsDefs.getEttMdsPtr(code));
+            Cpu.PC = Cpu.savedPC;
+            Cpu.SP = Cpu.savedSP;
+            if (Cpu.validContext())
+            {
+                Mem.writeMDSWord(Cpu.LF, PrincOpsDefs.LocalOverhead_pc, Cpu.PC);
+            }
+            Xfer.impl.xfer(controlLink, Cpu.LF, Xfer.XferType.xtrap, false);
+            Mem.writeMDSWord(Cpu.LF, code);
+            throw new MesaAbort();
+        }
+
+        public void signalPageFault(int faultingLongPointer) =>
+            Processes.faultTwo(PrincOpsDefs.qPAGE_FAULT, faultingLongPointer);
+
+        public void signalWriteProtectFault(int faultingLongPointer) =>
+            Processes.faultTwo(PrincOpsDefs.qWRITE_PROTECT_FAULT, faultingLongPointer);
+
+        public void signalFrameFault(int fsi) =>
+            Processes.faultOne(PrincOpsDefs.qFRAME_FAULT, (ushort)fsi);
+
         public void ERROR(string reason) => throw new MesaERROR(reason);
+
+        /*
+         * 9.5.2 Trap Processing (PrincOps)
+         */
+
+        public void trap(int controlLinkIdx)
+        {
+            int controlLink = Mem.readMDSDblWord(PrincOpsDefs.getSdMdsPtr(controlLinkIdx));
+            Cpu.PC = Cpu.savedPC;
+            Cpu.SP = Cpu.savedSP;
+            if (Cpu.validContext())
+            {
+                Mem.writeMDSWord(Cpu.LF, PrincOpsDefs.LocalOverhead_pc, Cpu.PC);
+                Cpu.logf("   => LF=0x{0:X4} -> overhead.pc=0x{1:X4}\n", Cpu.LF, Mem.readMDSWord(Cpu.LF, PrincOpsDefs.LocalOverhead_pc));
+            }
+            Xfer.impl.xfer(controlLink, Cpu.LF, Xfer.XferType.xtrap, false);
+        }
+
+        private void trapZero(int controlLinkIdx)
+        {
+            this.trap(controlLinkIdx);
+            throw new MesaAbort();
+        }
+
+        private void trapOne(int controlLinkIdx, int parameter)
+        {
+            this.trap(controlLinkIdx);
+            Mem.writeMDSWord(Cpu.LF, (ushort)parameter);
+            throw new MesaAbort();
+        }
+
+        private void trapTwo(int controlLinkIdx, int parameter)
+        {
+            this.trap(controlLinkIdx);
+            Mem.writeMDSWord(Cpu.LF, (ushort)(parameter & 0x0000FFFF));
+            Mem.writeMDSWord(Cpu.LF + 1, (ushort)(parameter >>> 16));
+            throw new MesaAbort();
+        }
     }
 
     // The installed thrower — overridden by unit tests via Cpu.thrower = new ChkThrower().
