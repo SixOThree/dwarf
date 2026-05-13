@@ -1,6 +1,6 @@
 # Phase F — Draco port
 
-**Status**: Not started
+**Status**: In progress — foundation (IORegion + DeviceHandler + IOPTypes) landed 2026-05-13
 **Estimated effort**: 3–4 weeks single-engineer FTE
 **Predecessor**: Phase E (Duchess UI working)
 **Successor**: Phase G (polish)
@@ -116,8 +116,8 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess <duchess-config.properties>
 
 ## Sub-tasks
 
-- [ ] Port `IOPTypes.cs`, `DeviceHandler.cs`
-- [ ] Port `IORegion.cs` (978 LOC — careful endianness work)
+- [x] Port `IOPTypes.cs`, `DeviceHandler.cs`
+- [x] Port `IORegion.cs` (978 LOC Java → ~700 LOC C# — careful endianness work; Java's `short get()` becomes C# `ushort get()` to match the engine's `ushort[]` memory backing)
 - [ ] Port `IOP.cs` (coordinator)
 - [ ] Port `HProcessor.cs`, `HBeep.cs`, `HTTY.cs` (small handlers first)
 - [ ] Port `HKeyboardMouse.cs`, `HDisplay.cs`
