@@ -2,7 +2,7 @@
 
 **Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-2 — IOP coordinator + 3 small handlers: HBeep + HTTY + HProcessor; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase F-3 — UI-routing handlers: HKeyboardMouse + HDisplay; full IOP.UiCallbacks wired; 656 tests still passing)
 
 ## Phase status
 
@@ -409,3 +409,23 @@ Recommendation: **(a)** — methodical layer-by-layer build minimizes the multi-
 - **(b) HFloppy alone (Phase F-4a)** — ~1770 LOC of Java (the biggest single file in F-2's remaining set). Mostly independent of the UI handlers; can be done in parallel with (a) in a different session. Floppy support is needed for ViewPoint's "Install Software" workflow.
 
 Recommendation: **(a)** — completes the visible/interactive Draco harness sooner. HFloppy (b) is a self-contained slab of code that benefits from a fresh-context session anyway, and once HKeyboardMouse + HDisplay are in, the partial Draco can be launched in the Avalonia window for visual smoke-testing even without disk yet.
+
+### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
+
+- **All 656 tests still pass.** No new unit tests this session — HKeyboardMouse + HDisplay are exercised by booting Pilot/ViewPoint with real keyboard/mouse input, which requires disk artifacts.
+- **`Dwarf.Iop6085/HKeyboardMouse.cs`** (~175 LOC C# from 195 LOC Java) — keyboard/mouse FCB with a 9-word `kBbase[]` (current keyboard state) + 128-word `kBindex[]` (keycode→bit lookup table, populated by mesa). `handleKeyUsage` flips bits in `uiKeys[]` per eLevelVKey, then `refreshMesaMemory` copies the dirty state into `fcb.kBbase[]`. **Concurrency**: `lock(this)` mirrors Java's per-instance `synchronized` on `refreshMesaMemory` / `handleKeyUsage` / `resetKeys`. `setNewCursorPosition` is intentionally lock-free — its contract is "called from the mesa-processor thread during a display refresh", same as Java.
+- **Java type-system gotcha**: `Config.IO_LOG_KEYBOARD | Config.IO_LOG_MOUSE` is a *bitwise OR* on Java booleans (which is the same as logical OR when both are unconditionally evaluated). C# `|` on `bool` operands does the same — bitwise OR with no short-circuit. Both `false` consts today, so the result is `false` at compile time and `logf` is dead-code-eliminated anyway. Preserved verbatim for diff fidelity.
+- **`Dwarf.Iop6085/HDisplay.cs`** (~395 LOC C# from 463 LOC Java) — display controller. Listens for LOCKMEM events on the FCB's `displayLock` mask to dispatch six change-info flags: `headAllInfoChanged` (display turn-on, kicks off vertical-retrace + VMMap scan), `cursorMapChanged` (extracts 16-line cursor bitmap from FCB), `cursorPosChanged` (computes mouse-hotspot offset and forwards to `iUiDataConsumer.PointerBitmapAcceptor`), `displInfoChanged` (turn-off), plus 3 ignored flags (border/picture-border/background/alignment). Pretty-prints the cursor bitmap via `logf("    | x   x   x ...")` row by row — preserved verbatim.
+- **Byte-swap mask constants kept verbatim**: the Java upstream computes `cursorPosChangedMask = (short)byteSwap((short)0x8000)`. C# version uses `(ushort)byteSwap(0x8000)` — semantically identical bit pattern (0x0080), but the type is `ushort` to match the `ushort newValue` parameter on `handleLockmem`. No sign-extension hazard since we're always doing bit operations.
+- **Vertical retrace interrupt thread**: Java's `Thread + Runnable + InterruptedException` becomes C# `Thread + method group + ThreadInterruptedException`. `setDaemon(true)` → `IsBackground = true`. `Thread.sleep(25)` → `Thread.Sleep(25)`. The lock-acquisition pattern (`synchronized(vertRetraceLock)`) becomes `lock(vertRetraceLock)`. **Subtle**: Java's `synchronized void disallowVertRetraceIntr()` adds a per-instance `this` lock *outside* the `vertRetraceLock` — preserved verbatim with nested `lock(this) { lock(vertRetraceLock) { ... } }`. Holding both locks momentarily is intentional in the upstream's design.
+- **PointerBitmapAcceptor invocation**: Java's anonymous-interface call site `uiPointerBitmapAcceptor.setPointerBitmap(bitmap, hx, hy)` becomes C# `uiPointerBitmapAcceptor(bitmap, hx, hy)` — since C# `iUiDataConsumer.PointerBitmapAcceptor` is a delegate (not an interface with a single method), the invocation is direct.
+- **C# format-string conversion**: 16 hex pattern args go from Java's `printf("%s %s %s ...")` to C# `string.Format("{0} {1} ... {15}")` with explicit positional indices. The hard-coded count is fine — both row-renderers share the same magic 16.
+- **`IOP.cs` re-wiring (Phase F-3 step)**: un-commented the HKeyboardMouse + HDisplay instantiation blocks in `initialize()` (between processor and disk handlers — preserves Java upstream's ordering). The `UiCallbacks` `acceptKeyboardKey` / `resetKeys` / `acceptMousePosition` / `registerPointerBitmapAcceptor` stubs are now fully wired to `hKeyMo` / `hDisplay`. `acceptMouseKey` already mapped 1/2/3 → eLevelVKey.Point/Menu/Adjust in Phase F-2 and works as soon as `acceptKeyboardKey` becomes real. TODO comments for HDisk/HFloppy/HEthernet remain.
+
+**Phase F progress**: 7 of ~13 sub-tasks done (the doc collapses some). The IOP module is now functional for everything except disk / floppy / network — the partial Draco can be launched in the Avalonia window for visual smoke-testing once `DracoHost.cs` orchestration lands, even without disk yet (though it'll hit `NotSupportedException` on the first disk read).
+
+**Next session pick-up — two viable paths**:
+- **(a) HFloppy alone (Phase F-4a)** — ~1770 LOC Java (~600 LOC C# after dropping legacy IMD parsing per RISKS R7, same approach as Phase D's FloppyAgent). Self-contained; doesn't touch the engine boot path. Floppy support is needed for ViewPoint's "Install Software" workflow.
+- **(b) HDisk read-only path + DracoHost orchestration (Phase F-4b)** — ~1100 LOC of HDisk + ~150 LOC of DracoHost.cs. Higher payoff: gets a Draco that can read a ViewPoint base image and start booting in Avalonia. Lower fidelity: write path is shadow-only (same compromise as `DiskAgent` Phase D-2; merged with the same DECISIONS.md §8 rationale).
+
+Recommendation: **(b)** — HDisk read + DracoHost is the critical-path to a visible boot. HFloppy isn't blocking the boot screen; it's blocking only the floppy-driven install/upgrade workflows. Get the Draco visibly booting first, then come back to HFloppy.

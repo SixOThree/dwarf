@@ -55,8 +55,8 @@ public static class IOP
     private static readonly List<DeviceHandler> devHandlers = new();
 
     private static HBeep? hBeep;
-    // private static HDisplay? hDisplay;        // TODO Phase F-3
-    // private static HKeyboardMouse? hKeyMo;    // TODO Phase F-3
+    private static HDisplay? hDisplay;
+    private static HKeyboardMouse? hKeyMo;
     // private static HDisk? hDisk;              // TODO Phase F-4
     // private static HFloppy? hFloppy;          // TODO Phase F-4
     // private static HEthernet? hEthernet;      // TODO Phase F-5
@@ -92,17 +92,17 @@ public static class IOP
         iorTable.segments[IOPTypes.HandlerID_beep].ioRegionSegment.set(fcbSegment);
         devHandlers.Add(hBeep);
 
-        // TODO Phase F-3 — device handler for keyboard & mouse
-        // hKeyMo = new HKeyboardMouse();
-        // fcbSegment = hKeyMo.getFcbSegment();
-        // iorTable.segments[IOPTypes.HandlerID_keyboardAndMouse].ioRegionSegment.set(fcbSegment);
-        // devHandlers.Add(hKeyMo);
+        // device handler for keyboard & mouse
+        hKeyMo = new HKeyboardMouse();
+        fcbSegment = hKeyMo.getFcbSegment();
+        iorTable.segments[IOPTypes.HandlerID_keyboardAndMouse].ioRegionSegment.set(fcbSegment);
+        devHandlers.Add(hKeyMo);
 
-        // TODO Phase F-3 — device handler for display (HDisplay takes HKeyboardMouse as ctor arg)
-        // hDisplay = new HDisplay(hKeyMo);
-        // fcbSegment = hDisplay.getFcbSegment();
-        // iorTable.segments[IOPTypes.HandlerID_display].ioRegionSegment.set(fcbSegment);
-        // devHandlers.Add(hDisplay);
+        // device handler for display (takes HKeyboardMouse as ctor arg)
+        hDisplay = new HDisplay(hKeyMo);
+        fcbSegment = hDisplay.getFcbSegment();
+        iorTable.segments[IOPTypes.HandlerID_display].ioRegionSegment.set(fcbSegment);
+        devHandlers.Add(hDisplay);
 
         // device handler for processor
         hProcessor = new HProcessor();
@@ -254,16 +254,14 @@ public static class IOP
     {
         public void acceptKeyboardKey(eLevelVKey key, bool isPressed)
         {
-            // TODO Phase F-3 — once HKeyboardMouse is ported, forward via hKeyMo
-            // if (hKeyMo == null) { return; }
-            // hKeyMo.handleKeyUsage(key, isPressed);
+            if (hKeyMo == null) { return; }
+            hKeyMo.handleKeyUsage(key, isPressed);
         }
 
         public void resetKeys()
         {
-            // TODO Phase F-3
-            // if (hKeyMo == null) { return; }
-            // hKeyMo.resetKeys();
+            if (hKeyMo == null) { return; }
+            hKeyMo.resetKeys();
         }
 
         public void acceptMouseKey(int key, bool isPressed)
@@ -284,12 +282,14 @@ public static class IOP
 
         public void acceptMousePosition(int x, int y)
         {
-            // TODO Phase F-3 — once HDisplay is ported, forward to hDisplay.recordMouseMoved
+            if (hDisplay == null) { return; }
+            hDisplay.recordMouseMoved(x, y);
         }
 
         public void registerPointerBitmapAcceptor(iUiDataConsumer.PointerBitmapAcceptor acpt)
         {
-            // TODO Phase F-3 — once HDisplay is ported, forward to hDisplay.setPointerBitmapAcceptor
+            if (hDisplay == null) { return; }
+            hDisplay.setPointerBitmapAcceptor(acpt);
         }
 
         public Func<int[]> registerUiDataRefresher(iMesaMachineDataAccessor refresher)

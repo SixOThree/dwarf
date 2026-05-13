@@ -1,6 +1,6 @@
 # Phase F — Draco port
 
-**Status**: In progress — F-1 foundation + F-2 IOP coordinator + 3 small handlers landed 2026-05-13
+**Status**: In progress — F-1 + F-2 + F-3 (HKeyboardMouse + HDisplay) landed 2026-05-13
 **Estimated effort**: 3–4 weeks single-engineer FTE
 **Predecessor**: Phase E (Duchess UI working)
 **Successor**: Phase G (polish)
@@ -120,7 +120,7 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess <duchess-config.properties>
 - [x] Port `IORegion.cs` (978 LOC Java → ~700 LOC C# — careful endianness work; Java's `short get()` becomes C# `ushort get()` to match the engine's `ushort[]` memory backing)
 - [x] Port `IOP.cs` (coordinator — partial: only the 3 small handlers wired; HKeyboardMouse/HDisplay/HDisk/HFloppy/HEthernet TODO-stubbed)
 - [x] Port `HProcessor.cs`, `HBeep.cs`, `HTTY.cs` (small handlers first)
-- [ ] Port `HKeyboardMouse.cs`, `HDisplay.cs`
+- [x] Port `HKeyboardMouse.cs`, `HDisplay.cs`
 - [ ] Port `HFloppy.cs`
 - [ ] Port `HDisk.cs` (read-only path only)
 - [ ] Port `HEthernet.cs` (wraps shared `NetworkHubInterface`)
