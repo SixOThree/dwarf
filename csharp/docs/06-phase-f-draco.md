@@ -1,6 +1,6 @@
 # Phase F — Draco port
 
-**Status**: In progress — F-1 + F-2 + F-3 (HKeyboardMouse + HDisplay) landed 2026-05-13
+**Status**: In progress — F-1 + F-2 + F-3 + F-4a (HDisk + DracoHost; `-draco` dispatch live) landed 2026-05-13
 **Estimated effort**: 3–4 weeks single-engineer FTE
 **Predecessor**: Phase E (Duchess UI working)
 **Successor**: Phase G (polish)
@@ -122,10 +122,10 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess <duchess-config.properties>
 - [x] Port `HProcessor.cs`, `HBeep.cs`, `HTTY.cs` (small handlers first)
 - [x] Port `HKeyboardMouse.cs`, `HDisplay.cs`
 - [ ] Port `HFloppy.cs`
-- [ ] Port `HDisk.cs` (read-only path only)
+- [x] Port `HDisk.cs` (read-only path only)
 - [ ] Port `HEthernet.cs` (wraps shared `NetworkHubInterface`)
-- [ ] Implement `DracoHost.cs` in `Dwarf.Draco/`
-- [ ] Wire `Dwarf.Cli` `-draco` dispatch
+- [x] Implement `DracoHost.cs` in `Dwarf.Draco/`
+- [x] Wire `Dwarf.Cli` `-draco` dispatch (both headless and `-gui` modes)
 - [ ] ViewPoint 2.0 / XDE 5.0 boots
 - [ ] Duchess regression — `-duchess` still works
 - [ ] Commit: `feat(iop6085): Phase F — Draco 6085 emulation; ViewPoint boots`
