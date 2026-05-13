@@ -58,7 +58,7 @@ public static class IOP
     private static HDisplay? hDisplay;
     private static HKeyboardMouse? hKeyMo;
     private static HDisk? hDisk;
-    // private static HFloppy? hFloppy;          // TODO Phase F-4b
+    private static HFloppy? hFloppy;
     private static HEthernet? hEthernet;
     private static HTTY? hTty;
     private static HProcessor? hProcessor;
@@ -111,11 +111,11 @@ public static class IOP
         iorTable.segments[IOPTypes.HandlerID_disk].ioRegionSegment.set(fcbSegment);
         devHandlers.Add(hDisk);
 
-        // TODO Phase F-4b — device handler for floppy disk(s)
-        // hFloppy = new HFloppy();
-        // fcbSegment = hFloppy.getFcbSegment();
-        // iorTable.segments[IOPTypes.HandlerID_floppy].ioRegionSegment.set(fcbSegment);
-        // devHandlers.Add(hFloppy);
+        // device handler for floppy disk(s)
+        hFloppy = new HFloppy();
+        fcbSegment = hFloppy.getFcbSegment();
+        iorTable.segments[IOPTypes.HandlerID_floppy].ioRegionSegment.set(fcbSegment);
+        devHandlers.Add(hFloppy);
 
         // device handler for network
         hEthernet = new HEthernet();
@@ -310,8 +310,8 @@ public static class IOP
     {
         public int getDiskReads() => hDisk?.getReads() ?? 0;
         public int getDiskWrites() => hDisk?.getWrites() ?? 0;
-        public int getFloppyReads() => 0;   // TODO Phase F-4b — hFloppy?.getReads() ?? 0
-        public int getFloppyWrites() => 0;  // TODO Phase F-4b — hFloppy?.getWrites() ?? 0
+        public int getFloppyReads() => hFloppy?.getReads() ?? 0;
+        public int getFloppyWrites() => hFloppy?.getWrites() ?? 0;
         public int getNetworkpacketsSent() => hEthernet?.getPacketsSentCount() ?? 0;
         public int getNetworkpacketsReceived() => hEthernet?.getPacketsReceivedCount() ?? 0;
     }
@@ -320,14 +320,13 @@ public static class IOP
      * floppy handling operations — TODO Phase F-4 once HFloppy is ported
      */
 
-    public static bool insertFloppy(FileInfo f, bool readonly_)
-    {
-        // TODO Phase F-4: return hFloppy.insertFloppy(f, readonly_);
-        throw new NotSupportedException("HFloppy is ported in Phase F-4");
-    }
+    // Phase F-4b: HFloppy is wired, but its `insertFloppy` currently throws
+    // `NotSupportedException` because no floppy format reader is ported (per
+    // RISKS R7). This entry point exists so DracoHost / a future UI button can
+    // call it; the exception propagates with a descriptive message.
+    public static bool insertFloppy(FileInfo f, bool readonly_) =>
+        hFloppy?.insertFloppy(f.FullName, readonly_)
+        ?? throw new InvalidOperationException("IOP not initialized: insertFloppy called before initialize()");
 
-    public static void ejectFloppy()
-    {
-        // TODO Phase F-4: hFloppy.ejectFloppy();
-    }
+    public static void ejectFloppy() => hFloppy?.ejectFloppy();
 }

@@ -2,7 +2,7 @@
 
 **Current phase**: F (Draco port) — Phase E coding complete (12/12); Phase D at 12/14 (D-13/D-14 await disk artifacts)
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase F-5 — HEthernet; reuses NetworkHubInterface/NetworkInternalTimeService from Phase D; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase F-4b — HFloppy infrastructure; **Phase F is now coding-complete**, all device handlers wired; 656 tests still passing)
 
 ## Phase status
 
@@ -476,6 +476,30 @@ Recommendation: **(a)** — HEthernet completes the Phase F functional surface f
 - **(c) Acquire ViewPoint/XDE disk artifact + interactive boot test** — would surface latent F-1..F-5 bugs that unit tests can't catch (e.g., byte-order errors in FCB layout, signed/unsigned drift in IOCB processing). User-driven, not coding-driven.
 
 Recommendation: **(a) HFloppy** — Phase F should land as a fully-functional unit before Phase G starts. The disk-artifact-bound boot test (c) is the natural Phase G-prep validation step *after* HFloppy lands.
+
+### 2026-05-13 (Phase F-4b — HFloppy infrastructure; Phase F coding-complete)
+
+- **All 656 tests still pass.** No new unit tests; HFloppy is integration-tested by booting ViewPoint and exercising the floppy device path — but floppy operations always hit the "no floppy present" path since no format reader is ported.
+- **`Dwarf.Iop6085/HFloppy.cs`** (~900 LOC C# from 1770 LOC Java) — FCB/IOCB infrastructure + processNotify dispatcher + insert/eject state machine. Drops the Java upstream's IMDFloppy (~200 LOC) and DMKFloppy (~280 LOC) reader classes per RISKS R7 (legacy 5.25" 360K formats; users convert via Java tool). The abstract `Floppy` base class is preserved so a future raw-1.44 MiB or IMD/DMK implementation can plug into the existing FCB/IOCB/state-machine infrastructure without changing the surrounding code.
+- **FCB layout fidelity**: ported all ~25 sub-structures verbatim. `FDF_Attributes` (8 words with bitfields for ready/diskChange/twoSided/busy), `FDF_Context` (2 constructors — flat and embedded), `Port80ControlWordRecord` (14 boolean control bits), `FdcStatusRegister3TypeAndSpecifyAndRecalFlags` (8 status bits + 2 fields), `DeviceContextBlock` (combines the above + 2 contexts), `CounterControlWord` / `DmaControlWord` (11/13 control bits each), the FCB itself (~40 fields), plus the IOCB (~90 fields) with its 3 `FdcCommandRecord` slots and 3 `TrackDMAandCounterControl` blocks (first/middle/last track DMA).
+- **Java upstream bug preserved verbatim**: `Port80ControlWordRecord` and `FdcStatusRegister3TypeAndSpecifyAndRecalFlags` both declare `private static Word w;` — a static field shared across all instances. The constructor's `this.w = mkWord(...)` overwrites the shared slot every time, so only the LAST-created instance's Java descriptor object survives in memory. The IO region memory locations are still allocated correctly via `mkWord` (one per call); the bug is just that prior descriptor references become orphaned. C# behaves identically; renamed the field `w_static` to make the static nature visible and added `#pragma warning disable CA1802 CS0649` around it. Audit comments document the bug.
+- **`processNotify` dispatcher**: 2 of 16 ExtendedFDCcommandType operations actually do work — `NullCommand` (sets state to OperationCompleted) and `ReadData` (reads sectors via the abstract `Floppy.getSector` and copies to mesa memory). All others fall through to `OperationInvalid`. Same as Java upstream — most floppy ops aren't exercised by Pilot's normal boot path. The interesting bit is the 3-region DMA-byte-count distribution (first/middle/last track) which is preserved verbatim.
+- **`insertFloppy` throws NotSupportedException** with a "Phase F-4b — formats not supported" message. Java upstream's path: `.imd → IMDFloppy`, `.dmk → DMKFloppy`, else `throw IOException`. C# port drops both readers; effectively the "else" branch always fires. `ejectFloppy` works (it's just state shuffling). `mesaInsertFloppy` / `mesaEjectFloppy` / `refreshMesaMemory` state machine ports verbatim with `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()` replacing `System.currentTimeMillis()`.
+- **Two-arg static factory inside IOStruct**: when an IOStruct subclass calls `mkWord(name, "w")`, the compiler resolves to the inherited 1-arg instance method (which shadows the 2-arg static via `using static IORegion`). The Java upstream uses `IORegion.mkWord(name, "w")` for the explicit static call; C# port does the same. Fix sites: `FDF_Context(string)`, `CounterControlWord(IOStruct?, string)` with null parent, `DmaControlWord(IOStruct?, string)` with null parent.
+- **`IOP.cs` re-wiring**: un-commented the HFloppy block; `IOPStatisticsProvider.getFloppyReads/Writes` now forward to `hFloppy?.getReads()/getWrites()`. `IOP.insertFloppy(FileInfo, bool)` now routes to `hFloppy.insertFloppy(string, bool)` (forwards FullName); `IOP.ejectFloppy` no-ops if hFloppy is null. Net effect: the surface is the same shape Java upstream uses; the NotSupportedException now propagates from `hFloppy.insertFloppy`, not from the IOP placeholder.
+
+**Phase F status**: **CODING-COMPLETE**. 12 of 13 sub-tasks done (the 13th is "ViewPoint/XDE boots" — verification, not coding, and requires a `.zdisk` artifact).
+
+Remaining for Phase F closure (none of these are coding):
+- **End-to-end ViewPoint/XDE boot validation** on a real `.zdisk` artifact. The repo's `disks-6085/` directory exists per the overview but is not git-tracked. User acquires/creates the artifact, then `dotnet run --project csharp/Dwarf.Cli -- -draco -gui <config>` should display a ViewPoint herald and login screen.
+- **Boot-time bug surfacing**: F-1..F-5 + F-4b were tested only via build + unit tests + smoke (no-arg CLI dispatch). Latent bugs (e.g., FCB layout off-by-one, signed/unsigned drift, missing byte-swap in a corner case) only surface during interactive boot. Expect a couple of follow-up commits to fix what shows up.
+
+**Next session pick-up — Phase G start**:
+- **(a) Phase G kickoff** — CI workflow (.github/workflows/), BenchmarkDotNet harness on `Cpu.Dispatch` (RISKS R3), migration docs ("How to migrate from Java Dwarf"), perf tuning if Phase G benchmark < 80% Java throughput.
+- **(b) Acquire ViewPoint disk artifact + interactive boot test** — close Phase F's final verification step.
+- **(c) HFloppy raw 1.44 MiB support** — adds a `RawFloppy` subclass of the abstract `Floppy` base. ~150 LOC. Self-contained.
+
+Recommendation: **(a)** — Phase G is the long pole. Boot validation can land alongside Phase G's CI work whenever a disk artifact is available. Raw 1.44 MiB floppy support is "nice to have" for the 6085 but isn't blocking any normal workflow.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 

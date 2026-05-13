@@ -1,6 +1,6 @@
 # Phase F — Draco port
 
-**Status**: In progress — F-1 + F-2 + F-3 + F-4a + F-5 (HEthernet; NetHub interop live) landed 2026-05-13
+**Status**: Coding-complete (F-1 through F-5 + F-4b HFloppy) landed 2026-05-13; boot-validation awaits Draco disk artifact
 **Estimated effort**: 3–4 weeks single-engineer FTE
 **Predecessor**: Phase E (Duchess UI working)
 **Successor**: Phase G (polish)
@@ -121,7 +121,7 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess <duchess-config.properties>
 - [x] Port `IOP.cs` (coordinator — partial: only the 3 small handlers wired; HKeyboardMouse/HDisplay/HDisk/HFloppy/HEthernet TODO-stubbed)
 - [x] Port `HProcessor.cs`, `HBeep.cs`, `HTTY.cs` (small handlers first)
 - [x] Port `HKeyboardMouse.cs`, `HDisplay.cs`
-- [ ] Port `HFloppy.cs`
+- [x] Port `HFloppy.cs` (infrastructure only; IMD/DMK readers deferred per RISKS R7)
 - [x] Port `HDisk.cs` (read-only path only)
 - [x] Port `HEthernet.cs` (wraps shared `NetworkHubInterface`)
 - [x] Implement `DracoHost.cs` in `Dwarf.Draco/`
