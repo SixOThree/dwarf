@@ -2,7 +2,7 @@
 
 **Current phase**: G (Polish) — Phase F coding-complete; verification (ViewPoint/XDE boot) awaits Draco disk artifact
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase G-2 — BenchmarkDotNet harness; **RISKS R3 closed** — measured ~157 M insns/sec, ~4× Java baseline; 656 tests still passing)
+**Last session**: 2026-05-13 (Phase G-3 — doc-consistency sweep; RISKS R1/R5/R8 closed retroactively, R7 permanently deferred; 656 tests still passing)
 
 ## Phase status
 
@@ -34,7 +34,7 @@ See `02-phase-b-opcodes.md` for details.
 - [x] Port `ChXX_Undocumented` (7 opcodes incl. VMFIND/STOPEMULATOR/SUSPEND/VERSION, no tests)
 - [x] Port `MiscTests` (1 test — 12-insn loop × 6M iterations, performance check)
 - [x] **All 608 fidelity-gate tests green** (618 total incl. 10 bonus smoke tests)
-- [ ] (Optional) BenchmarkDotNet baseline captured — deferred to Phase G
+- [x] ~~(Optional) BenchmarkDotNet baseline captured — deferred to Phase G~~ (delivered in Phase G-2: ~157 M insns/sec, RISKS R3 closed)
 
 ## Phase A sub-tasks (closed for reference)
 
@@ -553,6 +553,32 @@ Recommendation: **(a)** — RISKS R3 is the last open performance question. Clos
 - **(b) End-of-Phase-G polish** — close the loop on Phase D's optional sub-task (the BDN baseline noted at line 37 of PROGRESS.md as "deferred to Phase G" — strikethrough it since G-2 now covers it). Touch up any latent docs inconsistencies. Then bundle the merge + tag in a final Phase G-3 commit.
 
 Recommendation: **(b)** — Phase G is ~85% done; tying off the loose ends and merging to master delivers a clean v2.0.0-csharp release. NativeAOT (a) is optional and can land as a follow-up after the initial release.
+
+### 2026-05-13 (Phase G-3 — doc-consistency sweep; risk register reconciled)
+
+- **All 656 tests still pass.** No code changes this session; only doc reconciliation.
+- **Phase B sub-task `(Optional) BenchmarkDotNet baseline captured`** struck through in PROGRESS.md (line 37) and ticked as completed in `02-phase-b-opcodes.md` (line 203). Both now point at Phase G-2 as the delivery. While editing 02-phase-b-opcodes.md I also ticked off `ChXX_Undocumented`, `MiscTests`, `All 608 tests green`, and the final commit line — these were already done but had stale `[ ]` markers from Phase B's start.
+- **RISKS.md reconciliation**: 4 risks reclassified based on what actually happened during the port:
+  - **R1 (sign-extension drift)** → **Closed** 2026-05-12. The 618-test Phase B fidelity gate caught every sign-extension issue; Ch05's 193 tests passed first try.
+  - **R5 (static-init ordering)** → **Closed** 2026-05-12. Phase A's "explicit `Initialize(...)` methods called in documented order" mitigation was applied verbatim; `Mem.initializeMemoryGuam` → `Cpu.resetRegisters` → `Opcodes.initializeInstructionsPrincOpsPost40` → `Xfer.switchToNewPrincOps` is the canonical order, used by both AbstractInstructionTest and Duchess/DracoHost orchestration.
+  - **R7 (IMD/DMK floppies)** → **Permanently deferred** 2026-05-13. Per the original "defer" mitigation, Phase D-4 (FloppyAgent) and Phase F-4b (HFloppy) both reject IMD/DMK with a NotSupportedException; the readers (~480 LOC Java total) are not ported. A `RawFloppy` subclass is the future plug-in point (~150 LOC).
+  - **R8 (migration UX)** → **Closed** 2026-05-13. Phase G-1's `csharp/MIGRATION.md` + root README link is the mitigation. Wrapper script was not shipped — the manual flow is sufficient given the one-time nature.
+- **R6 (Linux dead-key)** kept Open but with a "tentative not-needed" note — the workaround wasn't ported and Avalonia's TextInput pipeline differs from AWT; awaits interactive Linux testing to close or re-open with a port.
+- **R4 (NetHub wire-protocol)** stays Open — the wire-protocol byte-fidelity verification (Java/C# side-by-side pcap diff) was never performed; no NetHub server was set up. Doesn't block release; surfaces during real-world usage.
+- Added a "Current status" footer to RISKS.md summarizing the 5/8 closed, 1/8 permanently deferred, 2/8 open count.
+
+**Phase G status**: **Coding-complete for the planned scope** (CI + benchmarks + docs all shipped). Remaining sub-tasks:
+- **NativeAOT publish** — `<PublishAot>true</PublishAot>` on `Dwarf.Cli.csproj`. Optional; Avalonia 11 supports AOT with caveats. ~30-60 min of investigation + potential trimming-warning fixes. Best as a follow-up PR after the initial release.
+- **Both-emulators boot validation** — needs Duchess + Draco disk artifacts. User-driven.
+- **Merge `csharp-port` → `master` (no-ff)** — significant shared-state action; requires user authorization.
+- **Tag release (`v2.0.0-csharp`)** — same.
+
+**Next session pick-up — three viable paths**:
+- **(a) Merge to master + tag v2.0.0-csharp** — closes Phase G officially. Requires user go-ahead. After the merge, the C# port is "shipped" in the repo sense, even though end-to-end disk-boot verification still pends a real artifact.
+- **(b) NativeAOT publish investigation** — try `<PublishAot>true</PublishAot>` on Dwarf.Cli, see what trimming warnings emerge from Avalonia + the device handlers, decide whether to ship AOT or document the gap.
+- **(c) Pause for boot-validation** — wait for the user to provide disk artifacts; do an interactive boot test; close R6 (dead-key) and R4 (NetHub) via real-world testing.
+
+Recommendation: **(a)** — Phase G is conceptually done. Merging to master and tagging the release ships the port. NativeAOT and boot-validation are both worthwhile but can land as follow-up PRs after v2.0.0-csharp is tagged.
 
 ### 2026-05-13 (Phase F-3 — HKeyboardMouse + HDisplay; full UI-routing wired)
 

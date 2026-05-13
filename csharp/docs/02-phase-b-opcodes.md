@@ -197,11 +197,11 @@ dotnet run -c Release --project csharp/Dwarf.Tests --filter "*Dispatch*"
 - [ ] Port `Ch08_BlockTransfers` + tests (~85 tests)
 - [ ] Port `Ch09_ControlTransfers` (no tests)
 - [ ] Port `Ch10_Processes` (no tests)
-- [ ] Port `ChXX_Undocumented` (no tests)
-- [ ] Port `MiscTests` (~48 tests)
-- [ ] All 608 tests green
-- [ ] (Optional) BenchmarkDotNet baseline captured
-- [ ] Commit: `feat(engine): Phase B — 256+ Mesa opcodes ported, 608 unit tests passing`
+- [x] Port `ChXX_Undocumented` (no tests)
+- [x] Port `MiscTests` (1 test — performance + dispatch smoke check)
+- [x] All 608 tests green (618 total incl. dispatch + fixture smoke tests)
+- [x] (Optional) BenchmarkDotNet baseline captured (delivered in Phase G-2; see `Dwarf.Benchmarks/InterpreterLoopBenchmark.cs`)
+- [x] Commit: `feat(engine): Phase B — 256+ Mesa opcodes ported, 608 unit tests passing` (landed across multiple commits, e.g. `feat(engine): Phase B close-out — Ch09/Ch10/ChXX/Misc, Phase B done`)
 
 ## Hand-off
 
