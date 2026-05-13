@@ -158,7 +158,7 @@ dotnet run --project csharp/Dwarf.Cli -- -duchess $config --frames-out boot.fram
 - [x] Port `NetworkAgent` — wired into `Agents.cs` slot 3; selects NetworkHubInterface or NetworkInternalTimeService based on `setHubParameters` config
 - [x] Port `NetworkHubInterface` (TcpClient + 2 async tasks + `Channel<Packet>` per DECISIONS.md §4); 2-byte big-endian length-prefix wire protocol preserved byte-exact per RISKS R4
 - [x] Port `NetworkInternalTimeService` — XNS PEX time-request synthesizer; `lock(_lock)` replaces Java `synchronized`
-- [ ] Wire headless harness in `Dwarf.Cli` (`-duchess` flag dispatch, framebuffer dump output)
+- [x] Wire headless harness in `Dwarf.Cli` (`-duchess` flag dispatch, framebuffer dump output) — `Dwarf.Duchess/Duchess.cs` (headless variant), `HeadlessDisplaySink.cs`, `PropertiesExt.cs`, `Utils.cs`; `Cpu.processor()` + `Cpu.initialize()` engine prereq also landed
 - [ ] Boot Pilot/GlobalView to login screen (visible in framedump)
 - [ ] NetHub round-trip verified byte-identical to Java
 - [ ] Commit: `feat(agents): Phase D — Duchess agents; Pilot boots headless; NetHub interop`

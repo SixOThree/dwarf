@@ -84,6 +84,9 @@ dotnet_diagnostic.CA1805.severity = silent # Explicit initialization to default 
 dotnet_diagnostic.CA1711.severity = silent # Reserved-suffix names ('OpImpl', 'InstallNew' / 'InstallOld')
 dotnet_diagnostic.CA1708.severity = silent # Identifiers differ only by case (MachineType type vs machineType field — preserved from Java)
 dotnet_diagnostic.CA1001.severity = silent # Types that own disposable fields should be disposable (NetworkHubInterface manages _cts/_sockLock via shutdown(); the engine-thread call boundary doesn't have a Dispose hook)
+dotnet_diagnostic.CA1854.severity = silent # Prefer TryGetValue over ContainsKey + indexer (PropertiesExt preserves Java structure)
+dotnet_diagnostic.CA1861.severity = silent # Constant array arguments (port preserves Java-style inline arrays in non-hot paths)
+dotnet_diagnostic.CA1870.severity = silent # Cached SearchValues (micro-optimization not worth obscuring intent)
 
 # Dead code from `if (Config.LOG_*)` blocks. The const flags allow JIT
 # to eliminate the bodies, which the compiler flags as unreachable. Intentional.
