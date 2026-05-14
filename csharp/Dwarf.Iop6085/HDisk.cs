@@ -1312,12 +1312,22 @@ public class HDisk : DeviceHandler
         }
     }
 
-    // merge disk base+delta files — Phase F-4: not supported (use Java -merge)
+    // Phase H: merge folds the in-memory state (base + applied .cscheck)
+    // back into a fresh .zdisk file. The old base + checkpoints are archived
+    // into a timestamped .zip alongside the disk. After this runs, the C#
+    // port boots from a clean base with no `.cscheck` overlay.
     public static void mergeDisks(TextWriter ps)
     {
         foreach (DiskFile df in diskFiles)
         {
-            ps.WriteLine($"mergeDisks not supported in C# port. Run Java `dwarf.jar -merge` instead. (disk: {df.fileName})");
+            try
+            {
+                df.mergeCheckpointToBase(ps);
+            }
+            catch (Exception e)
+            {
+                ps.WriteLine($"!! merge failed for {df.fileName}: {e.Message}");
+            }
         }
     }
 
@@ -1673,6 +1683,129 @@ public class HDisk : DeviceHandler
         // Java upstream had a `saveDisk` alias; keep saveCheckpoint as the
         // descriptive C#-side name for tests and future callers.
         public bool saveCheckpoint(StringBuilder errors) => this.saveDisk(errors);
+
+        // Phase H: -merge mode. Writes the in-memory state out as a new
+        // canonical `.zdisk` base, then archives the prior base + all
+        // `.cscheck` files (current + rotated) into a timestamped zip
+        // alongside the disk. After this runs, the C# port boots from a
+        // clean base on next start.
+        public void mergeCheckpointToBase(TextWriter ps)
+        {
+            if (this.readonly_)
+            {
+                ps.WriteLine($"merge: skipping read-only disk: {this.fileName}");
+                return;
+            }
+
+            string? dir = Path.GetDirectoryName(this.filePath);
+            if (dir == null)
+            {
+                ps.WriteLine($"merge: cannot resolve directory for {this.fileName}");
+                return;
+            }
+
+            // Build the list of files to archive: current base + current
+            // checkpoint + all rotated checkpoints.
+            var toArchive = new List<string> { this.filePath };
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            if (File.Exists(checkpointPath)) { toArchive.Add(checkpointPath); }
+            string baseName = Path.GetFileName(this.filePath) + EXT_CHECKPOINT + "-";
+            string[] rotated;
+            try
+            {
+                rotated = Directory.GetFiles(dir, baseName + "*");
+                Array.Sort(rotated, StringComparer.Ordinal);
+                toArchive.AddRange(rotated);
+            }
+            catch (IOException)
+            {
+                rotated = Array.Empty<string>();
+            }
+
+            // 1. Write the new base to a temp file
+            string newBaseTemp = this.filePath + ".new";
+            try { if (File.Exists(newBaseTemp)) { File.Delete(newBaseTemp); } } catch { /* swallow */ }
+
+            ps.WriteLine($"merge: writing new base for {this.fileName} ...");
+            this.writeFullBase(newBaseTemp);
+
+            // 2. Archive the old files into a timestamped zip
+            string ts = DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss.fff");
+            string zipPath = this.filePath + "-" + ts + ".zip";
+            ps.WriteLine($"merge: archiving prior files into {Path.GetFileName(zipPath)} ...");
+            using (FileStream zipFs = new(zipPath, FileMode.Create, FileAccess.Write))
+            using (var zip = new System.IO.Compression.ZipArchive(zipFs, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                foreach (string path in toArchive)
+                {
+                    if (!File.Exists(path)) { continue; }
+                    var entry = zip.CreateEntry(Path.GetFileName(path), System.IO.Compression.CompressionLevel.Optimal);
+                    using Stream entryStream = entry.Open();
+                    using FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
+                    fileStream.CopyTo(entryStream);
+                }
+            }
+
+            // 3. Replace the old base with the new one (atomic rename)
+            try { File.Delete(this.filePath); }
+            catch (IOException e) { ps.WriteLine($"!! couldn't remove old base: {e.Message}"); throw; }
+            File.Move(newBaseTemp, this.filePath);
+
+            // 4. Delete the .cscheck and rotated archives — they're in the zip now
+            if (File.Exists(checkpointPath))
+            {
+                try { File.Delete(checkpointPath); } catch (IOException) { /* swallow */ }
+            }
+            foreach (string r in rotated)
+            {
+                try { File.Delete(r); } catch (IOException) { /* swallow */ }
+            }
+
+            // 5. Reset dirty flags — the in-memory state IS the new base
+            for (int i = 0; i < this.sectorsChanged.Length; i++) { this.sectorsChanged[i] = false; }
+            this.changed = false;
+
+            ps.WriteLine($"merge: done. New base is {this.fileName}; backup is {Path.GetFileName(zipPath)}");
+        }
+
+        // Write the full in-memory state out as a new .zdisk file. Same
+        // format as the on-disk base file: zlib-compressed, big-endian,
+        // 6-word header followed by 122,880 sector entries each with a
+        // dbl-word linear sector index + 266 words.
+        private void writeFullBase(string path)
+        {
+            using FileStream fos = new(path, FileMode.Create, FileAccess.Write);
+            using ZLibStream zls = new(fos, System.IO.Compression.CompressionLevel.Optimal);
+
+            // Header (6 big-endian words)
+            writeBEWord(zls, signature1);
+            writeBEWord(zls, this.headCount);
+            writeBEWord(zls, this.cylCount);
+            writeBEWord(zls, (this.sectorCount >> 16) & 0xFFFF);
+            writeBEWord(zls, this.sectorCount & 0xFFFF);
+            writeBEWord(zls, signature2);
+
+            // All sectors, in linear order
+            for (int s = 0; s < this.sectorCount; s++)
+            {
+                writeBEWord(zls, (s >> 16) & 0xFFFF);
+                writeBEWord(zls, s & 0xFFFF);
+                ushort[] rawSector = this.sectors[s];
+                for (int w = 0; w < wordsPerSector; w++)
+                {
+                    writeBEWord(zls, rawSector[w] & 0xFFFF);
+                }
+            }
+            zls.Flush();
+        }
+
+        // Big-endian word write — for the .zdisk base format. (The .cscheck
+        // format uses little-endian; helpers for that are separate.)
+        private static void writeBEWord(Stream s, int v)
+        {
+            s.WriteByte((byte)((v >> 8) & 0xFF));
+            s.WriteByte((byte)(v & 0xFF));
+        }
 
         // Write the in-memory dirty sectors as a .cscheck file.
         // Returns the number of sectors written. Caller handles atomic rename.

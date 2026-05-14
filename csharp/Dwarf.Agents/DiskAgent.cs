@@ -42,12 +42,15 @@ namespace Dwarf.Agents;
 // **Port simplification per DECISIONS.md §8**: the Java implementation
 // writes a DEFLATE-compressed `.zdelta` file on shutdown and rotates old
 // deltas; on next boot it overlays that delta on top of the base file. The
-// C# port does *not* implement that — disk modifications live in RAM only
-// and are lost when the engine shuts down. Users must run the Java
-// `-merge` utility once to fold any existing `.zdelta` into the base file
-// before switching to the C# port (canonical base disks only). A simpler
-// C#-native checkpoint format may be added later; that lives in its own
-// future sub-task.
+// C# port does *not* read those `.zdelta` files — users still run Java's
+// `-merge` to fold them into a canonical base before switching.
+//
+// Phase H (2026-05-13): C#-native `.cscheck` checkpoint format added.
+// On shutdown, dirty pages are written to `<name>.dsk.cscheck`. On boot,
+// any existing `.cscheck` is applied on top of the base. Distinct from
+// Java's `.zdelta` (different magic / compression / endianness) — the
+// two formats can't be confused. See `Dwarf.Iop6085.HDisk.cs` for the
+// Draco variant; same on-disk format with flag bit 0 = 0 for Duchess.
 //
 // The agent works synchronously: disk I/O occurs during `call()` (the
 // CALLAGENT instruction). The interrupt signaling the end of operation is
@@ -78,6 +81,23 @@ public class DiskAgent : Agent
 
         // the cached disk content
         private readonly ushort[] content;
+
+        // Phase H: per-page dirty tracking. Cumulative since the base
+        // was loaded — includes pages restored from a `.cscheck` overlay
+        // at boot. `saveDisk` writes every page whose flag is true.
+        private readonly bool[] pagesChanged;
+
+        // .cscheck format constants — same shape as the Draco variant
+        // (see csharp/Dwarf.Iop6085/HDisk.cs). The flags byte
+        // distinguishes Duchess (= 0) from Draco (= 0x0001).
+        private const string EXT_CHECKPOINT = ".cscheck";
+        private const string EXT_CHECKPOINT_TEMP = ".cscheck.tmp";
+        private const uint CHECKPOINT_MAGIC = 0x48435744; // "DWCH" little-endian
+        private const ushort CHECKPOINT_VERSION = 1;
+        private const ushort CHECKPOINT_FLAG_DRACO = 0x0001; // bit 0 set => Draco; clear => Duchess
+
+        // Rotation count. Phase D-2 accepted-but-ignored; Phase H wires it in.
+        private readonly int deltasToKeep;
 
         // local logging function
         private void logf(string template, params object[] args)
@@ -118,10 +138,12 @@ public class DiskAgent : Agent
                 this.readonly_ = readonly_;
             }
 
-            // deltasToKeep would feed into the C#-native checkpoint rotation
-            // policy when that format lands; for Phase D-2 it's accepted-but-
-            // ignored. Reference it to avoid an unused-variable warning.
-            _ = deltasToKeep;
+            // Phase H: rotation count for .cscheck archives
+            this.deltasToKeep = deltasToKeep;
+
+            // Phase H: per-page dirty flags (one per WORDS_PER_PAGE block)
+            int pageCount = wordLength / PrincOpsDefs.WORDS_PER_PAGE;
+            this.pagesChanged = new bool[pageCount];
 
             logf("loading base file - byteLength = {0} => wordLength = {1} , cyls = {2} , heads = {3} , sects = {4}\n",
                 fileLength, wordLength, this.cylinders, DISK_HEADS, DISK_SECTORS);
@@ -154,10 +176,71 @@ public class DiskAgent : Agent
 
             logf("done loading base file\n");
 
-            // Java upstream loaded a `.zdelta` file here. Per DECISIONS.md §8
-            // the C# port does *not* do that — the canonical pre-merged base
-            // disk is the only source of truth. A simpler C#-native
-            // checkpoint format may land in a later sub-task.
+            // Phase H: apply C#-native .cscheck overlay if present
+            this.tryApplyCheckpoint();
+        }
+
+        // Phase H: if a `<base>.cscheck` exists, read it and overlay its
+        // pages on the in-memory content. Marks those pages as dirty so a
+        // subsequent saveDisk preserves cumulative state.
+        private void tryApplyCheckpoint()
+        {
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            if (!File.Exists(checkpointPath)) { return; }
+
+            int pagesLoaded;
+            try
+            {
+                using FileStream fis = new(checkpointPath, FileMode.Open, FileAccess.Read);
+                using System.IO.Compression.GZipStream gz = new(fis, System.IO.Compression.CompressionMode.Decompress);
+
+                uint magic = readUInt32LE(gz);
+                if (magic != CHECKPOINT_MAGIC)
+                {
+                    throw new IOException($".cscheck magic mismatch: expected 0x{CHECKPOINT_MAGIC:X8}, got 0x{magic:X8}");
+                }
+                ushort version = readUInt16LE(gz);
+                if (version != CHECKPOINT_VERSION)
+                {
+                    throw new IOException($".cscheck version unsupported: {version}");
+                }
+                ushort flags = readUInt16LE(gz);
+                if ((flags & CHECKPOINT_FLAG_DRACO) != 0)
+                {
+                    throw new IOException(".cscheck flags indicate Draco format but loaded into Duchess DiskAgent");
+                }
+                uint headerPageCount = readUInt32LE(gz);
+                if (headerPageCount != (uint)this.pagesChanged.Length)
+                {
+                    throw new IOException($".cscheck pageCount mismatch: header={headerPageCount}, base={this.pagesChanged.Length}");
+                }
+                uint changedCount = readUInt32LE(gz);
+
+                pagesLoaded = 0;
+                for (uint p = 0; p < changedCount; p++)
+                {
+                    uint pageIdx = readUInt32LE(gz);
+                    if (pageIdx >= (uint)this.pagesChanged.Length)
+                    {
+                        throw new IOException($".cscheck page index out of range: {pageIdx}");
+                    }
+                    int wordOffset = (int)pageIdx * PrincOpsDefs.WORDS_PER_PAGE;
+                    for (int w = 0; w < PrincOpsDefs.WORDS_PER_PAGE; w++)
+                    {
+                        this.content[wordOffset + w] = readUInt16LE(gz);
+                    }
+                    this.pagesChanged[pageIdx] = true;
+                    pagesLoaded++;
+                }
+            }
+            catch (IOException ioe)
+            {
+                Console.Write($"** .cscheck error: {ioe.Message}\n");
+                Console.Write("** Skipping checkpoint application; running from base disk only.\n");
+                return;
+            }
+
+            Console.Write($"applied .cscheck: {pagesLoaded} pages restored from {System.IO.Path.GetFileName(checkpointPath)}\n");
         }
 
         private static bool IsDirectoryWritable(string dir)
@@ -221,29 +304,275 @@ public class DiskAgent : Agent
             return wordOffset;
         }
 
-        // Save a checkpoint for the disk (if necessary). Phase D-2: no-op —
-        // disk modifications are not persisted. Returns OK so that callers
-        // don't see a spurious failure status. A future sub-task will replace
-        // this with the C#-native checkpoint format.
+        // Save a checkpoint for the disk. Writes a `.cscheck` overlay file
+        // alongside the base if any pages are dirty. Returns the disk state
+        // for the caller:
+        //   - ReadOnly: disk was opened readonly; nothing written
+        //   - OK:       nothing to do (no dirty pages) OR checkpoint written successfully
+        //   - Corrupted: write failed for an I/O reason
+        //
+        // Phase H (2026-05-13): replaces the Phase D-2 stub.
         public DiskState saveDisk()
         {
             if (this.readonly_)
             {
                 return DiskState.ReadOnly;
             }
-            // TODO Phase D (future sub-task): persist modifications in a
-            // C#-native checkpoint format (page index + page bytes, gzipped).
-            // For now, modifications live only in RAM and are lost on
-            // shutdown.
+
+            int dirtyCount = 0;
+            for (int i = 0; i < this.pagesChanged.Length; i++)
+            {
+                if (this.pagesChanged[i]) { dirtyCount++; }
+            }
+            if (dirtyCount == 0)
+            {
+                logf("disk is not changed, no checkpoint written\n");
+                return DiskState.OK;
+            }
+
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            string tempPath = this.filePath + EXT_CHECKPOINT_TEMP;
+
+            try
+            {
+                if (File.Exists(tempPath)) { File.Delete(tempPath); }
+                int pagesWritten = this.writeCheckpoint(tempPath, dirtyCount);
+                logf("wrote {0} dirty pages to {1}\n", pagesWritten, System.IO.Path.GetFileName(tempPath));
+            }
+            catch (Exception e)
+            {
+                logf("failed to write checkpoint: {0}\n", e.Message);
+                try { if (File.Exists(tempPath)) { File.Delete(tempPath); } } catch { /* swallow */ }
+                return DiskState.Corrupted;
+            }
+
+            // Rotate: archive an existing checkpoint with a timestamp suffix
+            if (File.Exists(checkpointPath))
+            {
+                string ts = DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss.fff");
+                string archivedPath = checkpointPath + "-" + ts;
+                try
+                {
+                    File.Move(checkpointPath, archivedPath);
+                }
+                catch (Exception e)
+                {
+                    logf("failed to archive prior checkpoint: {0}\n", e.Message);
+                    try { File.Delete(checkpointPath); } catch { /* swallow */ }
+                }
+            }
+            try
+            {
+                File.Move(tempPath, checkpointPath);
+            }
+            catch (Exception e)
+            {
+                logf("failed to finalize checkpoint: {0}\n", e.Message);
+                return DiskState.Corrupted;
+            }
+
+            this.pruneOldCheckpoints();
             return DiskState.OK;
         }
 
-        // Write back the disk content overwriting the disk file. Java
-        // upstream uses this for the `-merge` migration utility. The C# port
-        // does not implement merge — that one-shot operation lives in Java.
+        // Write the dirty pages to a `.cscheck` file at `path`. Returns the
+        // number of pages written. Caller handles atomic rename.
+        private int writeCheckpoint(string path, int expectedDirtyCount)
+        {
+            int pagesWritten = 0;
+            using (FileStream fos = new(path, FileMode.Create, FileAccess.Write))
+            using (System.IO.Compression.GZipStream gz = new(fos, System.IO.Compression.CompressionLevel.Optimal))
+            {
+                writeUInt32LE(gz, CHECKPOINT_MAGIC);
+                writeUInt16LE(gz, CHECKPOINT_VERSION);
+                writeUInt16LE(gz, 0); // flags: 0 == Duchess
+                writeUInt32LE(gz, (uint)this.pagesChanged.Length);
+                writeUInt32LE(gz, (uint)expectedDirtyCount);
+
+                for (int p = 0; p < this.pagesChanged.Length; p++)
+                {
+                    if (!this.pagesChanged[p]) { continue; }
+                    writeUInt32LE(gz, (uint)p);
+                    int wordOffset = p * PrincOpsDefs.WORDS_PER_PAGE;
+                    for (int w = 0; w < PrincOpsDefs.WORDS_PER_PAGE; w++)
+                    {
+                        writeUInt16LE(gz, this.content[wordOffset + w]);
+                    }
+                    pagesWritten++;
+                }
+                gz.Flush();
+            }
+            return pagesWritten;
+        }
+
+        // Delete archived checkpoints beyond `deltasToKeep`.
+        private void pruneOldCheckpoints()
+        {
+            string? dir = System.IO.Path.GetDirectoryName(this.filePath);
+            if (dir == null) { return; }
+            string baseName = System.IO.Path.GetFileName(this.filePath) + EXT_CHECKPOINT + "-";
+            string[] archived;
+            try
+            {
+                archived = Directory.GetFiles(dir, baseName + "*");
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            Array.Sort(archived, (a, b) => string.Compare(b, a, StringComparison.Ordinal));
+            for (int i = this.deltasToKeep; i < archived.Length; i++)
+            {
+                try { File.Delete(archived[i]); }
+                catch (IOException) { /* swallow */ }
+            }
+        }
+
+        // Little-endian I/O helpers for the .cscheck format
+        private static void writeUInt16LE(Stream s, ushort v)
+        {
+            s.WriteByte((byte)(v & 0xFF));
+            s.WriteByte((byte)((v >> 8) & 0xFF));
+        }
+
+        private static void writeUInt32LE(Stream s, uint v)
+        {
+            s.WriteByte((byte)(v & 0xFF));
+            s.WriteByte((byte)((v >> 8) & 0xFF));
+            s.WriteByte((byte)((v >> 16) & 0xFF));
+            s.WriteByte((byte)((v >> 24) & 0xFF));
+        }
+
+        private static ushort readUInt16LE(Stream s)
+        {
+            int b0 = s.ReadByte();
+            int b1 = s.ReadByte();
+            if (b0 < 0 || b1 < 0) { throw new IOException(".cscheck truncated"); }
+            return (ushort)(b0 | (b1 << 8));
+        }
+
+        private static uint readUInt32LE(Stream s)
+        {
+            int b0 = s.ReadByte();
+            int b1 = s.ReadByte();
+            int b2 = s.ReadByte();
+            int b3 = s.ReadByte();
+            if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) { throw new IOException(".cscheck truncated"); }
+            return (uint)b0 | ((uint)b1 << 8) | ((uint)b2 << 16) | ((uint)b3 << 24);
+        }
+
+        // Phase H: -merge mode. Writes the in-memory state out as a new raw
+        // .dsk base (preserving the byte order of the original file), then
+        // archives the prior base + all `.cscheck` files into a timestamped
+        // zip alongside the disk. After this runs, the C# port boots from a
+        // clean base on next start.
         public void mergeDelta(TextWriter messages)
         {
-            messages.WriteLine($"mergeDelta not supported in C# port. Run Java `dwarf.jar -merge` instead. (disk: {System.IO.Path.GetFileName(this.filePath)})");
+            if (this.readonly_)
+            {
+                messages.WriteLine($"merge: skipping read-only disk: {System.IO.Path.GetFileName(this.filePath)}");
+                return;
+            }
+
+            string? dir = System.IO.Path.GetDirectoryName(this.filePath);
+            if (dir == null)
+            {
+                messages.WriteLine($"merge: cannot resolve directory for {System.IO.Path.GetFileName(this.filePath)}");
+                return;
+            }
+
+            // Build the list of files to archive: current base + current
+            // checkpoint + all rotated checkpoints.
+            var toArchive = new List<string> { this.filePath };
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            if (File.Exists(checkpointPath)) { toArchive.Add(checkpointPath); }
+            string baseName = System.IO.Path.GetFileName(this.filePath) + EXT_CHECKPOINT + "-";
+            string[] rotated;
+            try
+            {
+                rotated = Directory.GetFiles(dir, baseName + "*");
+                Array.Sort(rotated, StringComparer.Ordinal);
+                toArchive.AddRange(rotated);
+            }
+            catch (IOException)
+            {
+                rotated = Array.Empty<string>();
+            }
+
+            // 1. Write new base to a temp file
+            string newBaseTemp = this.filePath + ".new";
+            try { if (File.Exists(newBaseTemp)) { File.Delete(newBaseTemp); } } catch { /* swallow */ }
+
+            messages.WriteLine($"merge: writing new base for {System.IO.Path.GetFileName(this.filePath)} ...");
+            this.writeFullBase(newBaseTemp);
+
+            // 2. Archive the old files
+            string ts = DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss.fff");
+            string zipPath = this.filePath + "-" + ts + ".zip";
+            messages.WriteLine($"merge: archiving prior files into {System.IO.Path.GetFileName(zipPath)} ...");
+            using (FileStream zipFs = new(zipPath, FileMode.Create, FileAccess.Write))
+            using (var zip = new System.IO.Compression.ZipArchive(zipFs, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                foreach (string path in toArchive)
+                {
+                    if (!File.Exists(path)) { continue; }
+                    var entry = zip.CreateEntry(System.IO.Path.GetFileName(path), System.IO.Compression.CompressionLevel.Optimal);
+                    using Stream entryStream = entry.Open();
+                    using FileStream fileStream = new(path, FileMode.Open, FileAccess.Read);
+                    fileStream.CopyTo(entryStream);
+                }
+            }
+
+            // 3. Replace old base with the new one
+            try { File.Delete(this.filePath); }
+            catch (IOException e) { messages.WriteLine($"!! couldn't remove old base: {e.Message}"); throw; }
+            File.Move(newBaseTemp, this.filePath);
+
+            // 4. Delete .cscheck and rotated archives — they're in the zip now
+            if (File.Exists(checkpointPath))
+            {
+                try { File.Delete(checkpointPath); } catch (IOException) { /* swallow */ }
+            }
+            foreach (string r in rotated)
+            {
+                try { File.Delete(r); } catch (IOException) { /* swallow */ }
+            }
+
+            // 5. Reset dirty flags — the in-memory state IS the new base
+            for (int i = 0; i < this.pagesChanged.Length; i++) { this.pagesChanged[i] = false; }
+
+            messages.WriteLine($"merge: done. New base is {System.IO.Path.GetFileName(this.filePath)}; backup is {System.IO.Path.GetFileName(zipPath)}");
+        }
+
+        // Write the full in-memory state out as a new raw .dsk file,
+        // preserving the byte order of the original (externalByteSwapped
+        // means the file uses Intel order, so each word is written as
+        // lower-byte then upper-byte; otherwise big-endian).
+        private void writeFullBase(string path)
+        {
+            using FileStream fos = new(path, FileMode.Create, FileAccess.Write);
+            byte[] buffer = new byte[this.content.Length * 2];
+            int b = 0;
+            if (this.externalByteSwapped)
+            {
+                for (int w = 0; w < this.content.Length; w++)
+                {
+                    ushort word = this.content[w];
+                    buffer[b++] = (byte)(word & 0xFF);
+                    buffer[b++] = (byte)((word >> 8) & 0xFF);
+                }
+            }
+            else
+            {
+                for (int w = 0; w < this.content.Length; w++)
+                {
+                    ushort word = this.content[w];
+                    buffer[b++] = (byte)((word >> 8) & 0xFF);
+                    buffer[b++] = (byte)(word & 0xFF);
+                }
+            }
+            fos.Write(buffer, 0, buffer.Length);
+            fos.Flush();
         }
 
         // The number of simulated cylinders for the disk.
@@ -295,11 +624,9 @@ public class DiskAgent : Agent
                 return Status_memoryFault;
             }
 
-            // Java upstream tracked modified-page bitmap (`chunks[]`) here so
-            // that only changed pages were written to the delta file. Since
-            // the C# port doesn't persist deltas, the bookkeeping is omitted.
-            // If/when the C#-native checkpoint format lands, re-introduce the
-            // chunks[] tracking at this site.
+            // Phase H: mark the page dirty for the next .cscheck write.
+            int pageIdx = diskWordOffset / PrincOpsDefs.WORDS_PER_PAGE;
+            this.pagesChanged[pageIdx] = true;
 
             // copy page content
             for (int i = 0; i < PrincOpsDefs.WORDS_PER_PAGE; i++)
