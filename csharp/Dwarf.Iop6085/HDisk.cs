@@ -39,9 +39,17 @@ namespace Dwarf.Iop6085;
 //     port uses `ZLibStream` from System.IO.Compression).
 //   - The .zdelta overlay read path is dropped — Java's `-merge` is the only
 //     supported way to fold deltas into the base, then the C# port reads that.
-//   - Writes go to an in-memory shadow only and are lost on shutdown.
-//   - `saveDisk` is a no-op that returns false (read-only / no checkpoint).
-//   - `mergeDisks` prints a one-line "use Java -merge instead" message.
+//
+// Phase H notes (2026-05-13):
+//   - C#-native checkpoint format (`.cscheck`) added. On boot, looks for
+//     `<name>.zdisk.cscheck` next to the base and applies its sectors on
+//     top of the in-memory state. On shutdown, `saveDisk` writes the
+//     cumulative dirty sectors to a new `.cscheck`, rotating the prior
+//     one to a timestamped backup.
+//   - Format is GZipStream-compressed, little-endian, magic "DWCH", version 1.
+//     Distinct from Java's `.zdelta` so the formats can't be confused.
+//   - `mergeDisks` (-merge CLI mode) folds the checkpoint into the base —
+//     produces a new .zdisk and archives the prior base + checkpoints.
 public class HDisk : DeviceHandler
 {
     /*
@@ -1380,6 +1388,21 @@ public class HDisk : DeviceHandler
         public const string EXT_DELTA = ".zdelta";
         public const string EXT_TEMP_DELTA = ".temp_zdelta";
 
+        // C#-native checkpoint format (Phase H). Lives alongside the .zdisk
+        // base file as <name>.zdisk.cscheck. Cumulative — represents all
+        // changes since the base. See DECISIONS.md §8 + csharp/MIGRATION.md
+        // for the format spec.
+        public const string EXT_CHECKPOINT = ".cscheck";
+        public const string EXT_CHECKPOINT_TEMP = ".cscheck.tmp";
+
+        // .cscheck format constants
+        // Magic bytes: 'D' 'W' 'C' 'H' (Dwarf C# CHeckpoint). Read as a uint32 LE
+        // from the file, the value is 0x48435744 (= "HCWD" reversed since LE).
+        private const uint CHECKPOINT_MAGIC = 0x48435744;
+        private const ushort CHECKPOINT_VERSION = 1;
+        // Flag bit 0: 1 = Draco (266-word sectors with labels). 0 = Duchess (256-word sectors).
+        private const ushort CHECKPOINT_FLAG_DRACO = 0x0001;
+
         // the file information for this emulated disk
         public readonly string fileName;
         private readonly string filePath;
@@ -1399,7 +1422,14 @@ public class HDisk : DeviceHandler
 
         // disk content
         private readonly ushort[][] sectors; // for each sector: label + data
-        private bool changed = false; // has the disk been changed at all? (in-memory shadow only)
+
+        // Per-sector dirty flags. Cumulative since the base was loaded —
+        // includes both this-session writes and sectors restored from a
+        // .cscheck overlay at boot. saveCheckpoint writes every sector
+        // whose flag is true.
+        private readonly bool[] sectorsChanged;
+
+        private bool changed = false; // has the disk been changed at all? (any sectorsChanged[] bit set)
 
         // temp sector content buffer for persistence i/o
         private readonly byte[] sectorBuffer = new byte[wordsPerSector * 2];
@@ -1421,8 +1451,17 @@ public class HDisk : DeviceHandler
         }
 
         // open an existing disk
-        // Phase F-4: read-only path only. The optional .zdelta overlay is NOT loaded
-        // (per DECISIONS.md §8 the C# port reads canonical pre-merged base files).
+        //
+        // Phase F-4 read-only behavior preserved: reads the canonical .zdisk
+        // base (Java upstream's `.zdelta` overlay is intentionally not read).
+        //
+        // Phase H (2026-05-13): additionally looks for a C#-native `.cscheck`
+        // overlay alongside the base. If present, applies it on top of the
+        // base sectors and pre-marks those sectors as dirty so the next
+        // saveCheckpoint preserves them.
+        //
+        // `deltasToKeep` is reused as the checkpoint rotation count (default
+        // 5) — Java upstream's config key was `oldDeltasToKeep`.
         public DiskFile(string filePath, bool readonly_, int deltasToKeep)
         {
             this.filePath = filePath;
@@ -1432,7 +1471,7 @@ public class HDisk : DeviceHandler
 
             try
             {
-                // read full file
+                // read full base file (.zdisk)
                 using (FileStream fis = new(filePath, FileMode.Open, FileAccess.Read))
                 using (ZLibStream iis = new(fis, CompressionMode.Decompress))
                 {
@@ -1457,13 +1496,13 @@ public class HDisk : DeviceHandler
                     {
                         this.sectors[i] = new ushort[wordsPerSector];
                     }
+                    this.sectorsChanged = new bool[this.sectorCount];
 
                     this.readDiskFile(iis, false);
                 }
 
-                // Phase F-4: .zdelta load path is NOT ported. The canonical
-                // pre-merged base disk is the only source of truth. A simpler
-                // C#-native checkpoint format may land in a later sub-task.
+                // Phase H: apply C#-native .cscheck overlay if present
+                this.tryApplyCheckpoint();
             }
             catch (IOException)
             {
@@ -1554,23 +1593,253 @@ public class HDisk : DeviceHandler
             }
         }
 
-        // Phase F-4: no-op — writes are in-memory only. Returns false (not saved).
+        // Save the current cumulative-since-base state to a `.cscheck`
+        // overlay file next to the base disk. Mirrors Java upstream's
+        // `saveDisk` in shape: rotate the existing checkpoint to a
+        // timestamped backup, write a new one, delete archives beyond
+        // `deltasToKeep`.
+        //
+        // Returns true if a checkpoint was written, false if there's
+        // nothing to save (read-only disk, or no dirty sectors).
+        // Messages explaining the outcome are appended to `errors`.
+        //
+        // Phase H (2026-05-13): replaces the Phase F-4 stub.
         public bool saveDisk(StringBuilder errors)
         {
             if (this.readonly_)
             {
-                this.logf(errors, "disk is read only, no delta written");
+                this.logf(errors, "disk is read only, no checkpoint written");
                 return false;
             }
             if (!this.changed)
             {
-                this.logf(errors, "disk is not changed, no delta written");
+                this.logf(errors, "disk is not changed, no checkpoint written");
                 return false;
             }
-            // TODO Phase F+: persist modifications in a C#-native checkpoint format.
-            // For Phase F-4 modifications live only in RAM and are lost on shutdown.
-            this.logf(errors, "C# port does not persist disk modifications. Use Java -merge to write back.");
-            return false;
+
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            string tempPath = this.filePath + EXT_CHECKPOINT_TEMP;
+
+            // Write to a temp file first; atomically rename to the final
+            // name only when the write succeeds.
+            try
+            {
+                if (File.Exists(tempPath)) { File.Delete(tempPath); }
+                int sectorsWritten = this.writeCheckpoint(tempPath);
+                this.logf("wrote {0} dirty sectors to {1}\n", sectorsWritten, Path.GetFileName(tempPath));
+            }
+            catch (Exception e)
+            {
+                this.logf(errors, "failed to write checkpoint: {0}", e.Message);
+                try { if (File.Exists(tempPath)) { File.Delete(tempPath); } } catch { /* swallow */ }
+                return false;
+            }
+
+            // Rotate: archive an existing checkpoint with a timestamp suffix.
+            // Format matches Java upstream's delta-rotation suffix so a future
+            // user can `ls -t` the directory and see the recency.
+            if (File.Exists(checkpointPath))
+            {
+                string ts = DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss.fff");
+                string archivedPath = checkpointPath + "-" + ts;
+                try
+                {
+                    File.Move(checkpointPath, archivedPath);
+                }
+                catch (Exception e)
+                {
+                    this.logf(errors, "failed to archive prior checkpoint: {0}", e.Message);
+                    // Continue anyway — overwriting the existing checkpoint
+                    // beats failing the entire save.
+                    try { File.Delete(checkpointPath); } catch { /* swallow */ }
+                }
+            }
+            try
+            {
+                File.Move(tempPath, checkpointPath);
+            }
+            catch (Exception e)
+            {
+                this.logf(errors, "failed to finalize checkpoint: {0}", e.Message);
+                return false;
+            }
+
+            // Prune old archived checkpoints beyond `deltasToKeep`.
+            this.pruneOldCheckpoints();
+
+            return true;
+        }
+
+        // Java upstream had a `saveDisk` alias; keep saveCheckpoint as the
+        // descriptive C#-side name for tests and future callers.
+        public bool saveCheckpoint(StringBuilder errors) => this.saveDisk(errors);
+
+        // Write the in-memory dirty sectors as a .cscheck file.
+        // Returns the number of sectors written. Caller handles atomic rename.
+        private int writeCheckpoint(string path)
+        {
+            int sectorsWritten = 0;
+            using (FileStream fos = new(path, FileMode.Create, FileAccess.Write))
+            using (GZipStream gz = new(fos, CompressionLevel.Optimal))
+            {
+                // Header (16 bytes, little-endian)
+                writeUInt32LE(gz, CHECKPOINT_MAGIC);
+                writeUInt16LE(gz, CHECKPOINT_VERSION);
+                writeUInt16LE(gz, CHECKPOINT_FLAG_DRACO);
+                writeUInt32LE(gz, (uint)this.sectorCount);
+                // Count dirty sectors so the header can carry the exact count
+                int dirtyCount = 0;
+                for (int i = 0; i < this.sectorCount; i++)
+                {
+                    if (this.sectorsChanged[i]) { dirtyCount++; }
+                }
+                writeUInt32LE(gz, (uint)dirtyCount);
+
+                // Sector entries
+                for (int i = 0; i < this.sectorCount; i++)
+                {
+                    if (!this.sectorsChanged[i]) { continue; }
+                    writeUInt32LE(gz, (uint)i);
+                    ushort[] rawSector = this.sectors[i];
+                    for (int w = 0; w < wordsPerSector; w++)
+                    {
+                        writeUInt16LE(gz, rawSector[w]);
+                    }
+                    sectorsWritten++;
+                }
+                gz.Flush();
+            }
+            return sectorsWritten;
+        }
+
+        // If a .cscheck file exists alongside the base, apply its sectors
+        // on top of the in-memory state. Marks those sectors as dirty so a
+        // subsequent saveCheckpoint preserves cumulative state.
+        private void tryApplyCheckpoint()
+        {
+            string checkpointPath = this.filePath + EXT_CHECKPOINT;
+            if (!File.Exists(checkpointPath)) { return; }
+
+            int sectorsLoaded;
+            try
+            {
+                using FileStream fis = new(checkpointPath, FileMode.Open, FileAccess.Read);
+                using GZipStream gz = new(fis, CompressionMode.Decompress);
+
+                uint magic = readUInt32LE(gz);
+                if (magic != CHECKPOINT_MAGIC)
+                {
+                    throw new DiskFileCorrupted($".cscheck magic mismatch: expected 0x{CHECKPOINT_MAGIC:X8}, got 0x{magic:X8}");
+                }
+                ushort version = readUInt16LE(gz);
+                if (version != CHECKPOINT_VERSION)
+                {
+                    throw new DiskFileCorrupted($".cscheck version unsupported: {version} (this build expects {CHECKPOINT_VERSION})");
+                }
+                ushort flags = readUInt16LE(gz);
+                if ((flags & CHECKPOINT_FLAG_DRACO) == 0)
+                {
+                    throw new DiskFileCorrupted(".cscheck flags indicate Duchess/raw format but loaded into Draco/zdisk DiskFile");
+                }
+                uint headerSectorCount = readUInt32LE(gz);
+                if (headerSectorCount != (uint)this.sectorCount)
+                {
+                    throw new DiskFileCorrupted($".cscheck sectorCount mismatch: header={headerSectorCount}, base={this.sectorCount}");
+                }
+                uint changedCount = readUInt32LE(gz);
+
+                sectorsLoaded = 0;
+                for (uint s = 0; s < changedCount; s++)
+                {
+                    uint linearIdx = readUInt32LE(gz);
+                    if (linearIdx >= (uint)this.sectorCount)
+                    {
+                        throw new DiskFileCorrupted($".cscheck sector index out of range: {linearIdx} >= {this.sectorCount}");
+                    }
+                    ushort[] rawSector = this.sectors[linearIdx];
+                    for (int w = 0; w < wordsPerSector; w++)
+                    {
+                        rawSector[w] = readUInt16LE(gz);
+                    }
+                    this.sectorsChanged[linearIdx] = true;
+                    sectorsLoaded++;
+                }
+                this.changed = (sectorsLoaded > 0);
+            }
+            catch (DiskFileCorrupted dfc)
+            {
+                Console.Write($"** .cscheck corrupted: {dfc.Message}\n");
+                Console.Write("** Skipping checkpoint application; running from base disk only.\n");
+                return;
+            }
+            catch (IOException ioe)
+            {
+                Console.Write($"** .cscheck I/O error: {ioe.Message}\n");
+                Console.Write("** Skipping checkpoint application; running from base disk only.\n");
+                return;
+            }
+
+            Console.Write($"applied .cscheck: {sectorsLoaded} sectors restored from {Path.GetFileName(checkpointPath)}\n");
+        }
+
+        // Delete archived checkpoints (.cscheck-<timestamp>) beyond `deltasToKeep`.
+        // Keeps the most recent N timestamps based on the file name's
+        // lexicographic order (which matches chronological order for the
+        // yyyy.MM.dd_HH.mm.ss.fff format).
+        private void pruneOldCheckpoints()
+        {
+            string? dir = Path.GetDirectoryName(this.filePath);
+            if (dir == null) { return; }
+            string baseName = Path.GetFileName(this.filePath) + EXT_CHECKPOINT + "-";
+            string[] archived;
+            try
+            {
+                archived = Directory.GetFiles(dir, baseName + "*");
+            }
+            catch (IOException)
+            {
+                return;
+            }
+            // Sort descending — newest first
+            Array.Sort(archived, (a, b) => string.Compare(b, a, StringComparison.Ordinal));
+            for (int i = this.deltasToKeep; i < archived.Length; i++)
+            {
+                try { File.Delete(archived[i]); }
+                catch (IOException) { /* swallow — best-effort */ }
+            }
+        }
+
+        // Little-endian I/O helpers for the .cscheck format
+        private static void writeUInt16LE(Stream s, ushort v)
+        {
+            s.WriteByte((byte)(v & 0xFF));
+            s.WriteByte((byte)((v >> 8) & 0xFF));
+        }
+
+        private static void writeUInt32LE(Stream s, uint v)
+        {
+            s.WriteByte((byte)(v & 0xFF));
+            s.WriteByte((byte)((v >> 8) & 0xFF));
+            s.WriteByte((byte)((v >> 16) & 0xFF));
+            s.WriteByte((byte)((v >> 24) & 0xFF));
+        }
+
+        private static ushort readUInt16LE(Stream s)
+        {
+            int b0 = s.ReadByte();
+            int b1 = s.ReadByte();
+            if (b0 < 0 || b1 < 0) { throw new DiskFileCorrupted(".cscheck truncated"); }
+            return (ushort)(b0 | (b1 << 8));
+        }
+
+        private static uint readUInt32LE(Stream s)
+        {
+            int b0 = s.ReadByte();
+            int b1 = s.ReadByte();
+            int b2 = s.ReadByte();
+            int b3 = s.ReadByte();
+            if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) { throw new DiskFileCorrupted(".cscheck truncated"); }
+            return (uint)b0 | ((uint)b1 << 8) | ((uint)b2 << 16) | ((uint)b3 << 24);
         }
 
         /*
@@ -1703,6 +1972,7 @@ public class HDisk : DeviceHandler
                 rawSector[i] = Mem.readWord(virtualLongPointer);
             }
             this.changed = true;
+            this.sectorsChanged[linearSector] = true;
             return ErrorType.noError;
         }
 
@@ -1722,6 +1992,7 @@ public class HDisk : DeviceHandler
             rawSector[sectorWord++] = label.dontCare0.get();
             rawSector[sectorWord++] = label.dontCare1.get();
             this.changed = true;
+            this.sectorsChanged[linearSector] = true;
             return ErrorType.noError;
         }
 
@@ -1779,6 +2050,7 @@ public class HDisk : DeviceHandler
             }
 
             this.changed = true;
+            this.sectorsChanged[linearSector] = true;
 
             return ErrorType.noError;
         }
