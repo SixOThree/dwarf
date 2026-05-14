@@ -19,3 +19,10 @@ csharp/**/*.log
 csharp/**/*.swp
 csharp/**/.DS_Store
 csharp/**/BenchmarkDotNet.Artifacts/
+
+# Dwarf C# disk overlay files written by the emulator on shutdown
+# (Phase H .cscheck format). Current + timestamped rotation archives.
+# Base disks (.dsk / .zdisk) stay tracked.
+*.cscheck
+*.cscheck-*
+*.cscheck.tmp
