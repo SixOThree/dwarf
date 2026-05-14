@@ -79,13 +79,16 @@ public class DiskAgent : Agent
         // is the disk readonly?
         public readonly bool readonly_;
 
-        // the cached disk content
-        private readonly ushort[] content;
+        // the cached disk content. `internal` so round-trip tests in
+        // Dwarf.Tests can synthesize and verify content directly without
+        // going through the Mem-mediated writePage/readPage path.
+        internal readonly ushort[] content;
 
         // Phase H: per-page dirty tracking. Cumulative since the base
         // was loaded — includes pages restored from a `.cscheck` overlay
         // at boot. `saveDisk` writes every page whose flag is true.
-        private readonly bool[] pagesChanged;
+        // `internal` for direct access from Dwarf.Tests round-trip tests.
+        internal readonly bool[] pagesChanged;
 
         // .cscheck format constants — same shape as the Draco variant
         // (see csharp/Dwarf.Iop6085/HDisk.cs). The flags byte
@@ -233,9 +236,11 @@ public class DiskAgent : Agent
                     pagesLoaded++;
                 }
             }
-            catch (IOException ioe)
+            catch (Exception ex) when (ex is IOException || ex is System.IO.InvalidDataException)
             {
-                Console.Write($"** .cscheck error: {ioe.Message}\n");
+                // Corrupted file or wrong format — log + skip, run from base only.
+                // `InvalidDataException` covers GZipStream malformed input.
+                Console.Write($"** .cscheck error: {ex.Message}\n");
                 Console.Write("** Skipping checkpoint application; running from base disk only.\n");
                 return;
             }

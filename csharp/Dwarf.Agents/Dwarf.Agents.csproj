@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Tests poke at DiskFile.content directly for round-trip checkpoint tests. -->
+    <InternalsVisibleTo Include="Dwarf.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -1899,15 +1899,11 @@ public class HDisk : DeviceHandler
                 }
                 this.changed = (sectorsLoaded > 0);
             }
-            catch (DiskFileCorrupted dfc)
+            catch (Exception ex) when (ex is DiskFileCorrupted || ex is IOException || ex is System.IO.InvalidDataException)
             {
-                Console.Write($"** .cscheck corrupted: {dfc.Message}\n");
-                Console.Write("** Skipping checkpoint application; running from base disk only.\n");
-                return;
-            }
-            catch (IOException ioe)
-            {
-                Console.Write($"** .cscheck I/O error: {ioe.Message}\n");
+                // Corrupted file or wrong format — log + skip, run from base only.
+                // `InvalidDataException` covers GZipStream malformed input.
+                Console.Write($"** .cscheck error: {ex.Message}\n");
                 Console.Write("** Skipping checkpoint application; running from base disk only.\n");
                 return;
             }

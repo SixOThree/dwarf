@@ -98,12 +98,29 @@ The migration tool (Java `-merge`) handles disk-format endianness on the Java si
 
 ---
 
-## 8. Disk format — not ported
+## 8. Disk format — base shared, overlay reformatted
 
-Per user decision: the existing Java `-merge` utility stays alive as the one-shot migration path. C# port reads only canonical (post-merge) base disks. The `agents/DiskAgent.loadDelta` / `saveDelta` logic (DEFLATE-compressed delta + ZIP archival of old deltas) is **not** ported to C#.
+**Phase D-2 / F-4a stance** (preserved): the C# port does not read Java's `.zdelta` overlay files. The `agents/DiskAgent.loadDelta` / `iop6085/HDisk.readDiskFile(stream, isDelta=true)` paths are intentionally not ported. Users with active Java `.zdelta` files must run Java's `-merge` once before switching, which folds the delta into the base.
 
-C# may implement its own simpler checkpoint format for in-emulator-session disk persistence. This format is owned by the C# port and not interoperable with Java Dwarf.
+**Phase H amendment** (2026-05-13, v2.1.0-csharp): The C# port now has its own checkpoint format (`.cscheck`) for in-emulator-session disk persistence. Distinct from Java's `.zdelta`:
+
+| | Java `.zdelta` | C# `.cscheck` |
+|---|---|---|
+| Compression | zlib (`InflaterInputStream`) | gzip (`GZipStream`) |
+| Magic / header | signatures `0xDAAD` + `0x5CC5`, no magic prefix | 4-byte "DWCH" + version + flags |
+| Endianness | big-endian (Mesa wire order) | little-endian (C# native ushort order) |
+| Per-entry framing | dbl-word linear sector index | uint32 LE linear sector/page index |
+| Sector size (Draco) | 266 words (10 label + 256 data) | 266 words (Draco flag bit set) |
+| Page size (Duchess) | n/a (Java Guam delta format differs) | 256 words (Duchess flag bit clear) |
+
+**Base disk format is fully shared** between Java and C#. Both emulators read and write the same `.dsk` (Guam) and `.zdisk` (6085) formats on `-merge`. Only the overlay formats differ.
+
+**Round-trip migration**:
+- Java → C#: `java -merge` (folds `.zdelta` into base) → C# reads the base
+- C# → Java: `dotnet run -- -<machine> -merge` (folds `.cscheck` into base) → Java reads the base
+
+See `csharp/MIGRATION.md` for the user-facing version of this story and the `.cscheck` format spec.
 
 Floppy formats:
-- 1.44 MiB raw images: trivially read/written in C# (`FileStream` + bytes)
-- IMD / DMK legacy formats: read-only, optional — port deferred unless users need it
+- 1.44 MiB raw images: trivially read/written in C# (`FileStream` + bytes) — supported in Duchess
+- IMD / DMK legacy formats: read-only, optional — port deferred unless users need it (RISKS R7)

@@ -21,6 +21,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Dwarf.Engine\Dwarf.Engine.csproj" />
     <ProjectReference Include="..\Dwarf.UI.Avalonia\Dwarf.UI.Avalonia.csproj" />
+    <!-- Phase H-6: disk-checkpoint round-trip tests poke at DiskAgent.DiskFile
+         via [InternalsVisibleTo]. -->
+    <ProjectReference Include="..\Dwarf.Agents\Dwarf.Agents.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
