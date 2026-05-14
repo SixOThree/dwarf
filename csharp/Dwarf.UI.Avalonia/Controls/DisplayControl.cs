@@ -77,10 +77,10 @@ public sealed class DisplayControl : Control
             src.CopyToBgra8888(fb.Address, fb.RowBytes);
         }
 
-        // Stretch-blit into the control's bounds. For a 1:1 display the
-        // bounds will match the bitmap pixel size, but if the user resizes
-        // the window we'll scale.
-        context.DrawImage(_bitmap, new Rect(Bounds.Size));
+        // Draw at the largest aspect-preserving rect that fits in Bounds;
+        // remaining space is left as the control's background (letterbox
+        // or pillarbox depending on which axis has slack).
+        context.DrawImage(_bitmap, GetImageRect());
     }
 
     // The control's intrinsic size matches the source so Avalonia's layout
@@ -92,5 +92,46 @@ public sealed class DisplayControl : Control
             return new Size(Source.Width, Source.Height);
         }
         return base.MeasureOverride(availableSize);
+    }
+
+    // The destination rect inside this control where the bitmap is drawn,
+    // letterboxed/pillarboxed to preserve the source's aspect ratio.
+    // MouseHandler reads this to translate pointer positions to bitmap
+    // pixel coordinates.
+    public Rect GetImageRect()
+    {
+        IDisplaySource? src = Source;
+        if (src == null) { return new Rect(Bounds.Size); }
+        return ComputeImageRect(Bounds.Size, src.Width, src.Height);
+    }
+
+    public static Rect ComputeImageRect(Size bounds, int sourceWidth, int sourceHeight)
+    {
+        if (bounds.Width <= 0.0 || bounds.Height <= 0.0
+            || sourceWidth <= 0 || sourceHeight <= 0)
+        {
+            return new Rect(0, 0, 0, 0);
+        }
+
+        double srcAspect = (double)sourceWidth / sourceHeight;
+        double boundsAspect = bounds.Width / bounds.Height;
+
+        double drawW, drawH;
+        if (boundsAspect > srcAspect)
+        {
+            // Bounds wider than source aspect → pillarbox (bars left & right)
+            drawH = bounds.Height;
+            drawW = drawH * srcAspect;
+        }
+        else
+        {
+            // Bounds taller (or equal) → letterbox (bars top & bottom)
+            drawW = bounds.Width;
+            drawH = drawW / srcAspect;
+        }
+
+        double drawX = (bounds.Width - drawW) / 2.0;
+        double drawY = (bounds.Height - drawH) / 2.0;
+        return new Rect(drawX, drawY, drawW, drawH);
     }
 }
