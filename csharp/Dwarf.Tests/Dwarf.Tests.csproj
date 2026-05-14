@@ -24,6 +24,9 @@
     <!-- Phase H-6: disk-checkpoint round-trip tests poke at DiskAgent.DiskFile
          via [InternalsVisibleTo]. -->
     <ProjectReference Include="..\Dwarf.Agents\Dwarf.Agents.csproj" />
+    <!-- Phase H follow-up: Draco .cscheck round-trip tests poke at
+         HDisk.DiskFile via [InternalsVisibleTo]. -->
+    <ProjectReference Include="..\Dwarf.Iop6085\Dwarf.Iop6085.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

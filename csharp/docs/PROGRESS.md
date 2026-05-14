@@ -1,19 +1,22 @@
 # Dwarf C# Port — Progress
 
-**Current phase**: G (Polish) — Phase F coding-complete; verification (ViewPoint/XDE boot) awaits Draco disk artifact
+**Current phase**: H follow-up (Draco round-trip test coverage) — coding-complete
 **Started**: 2026-05-12
-**Last session**: 2026-05-13 (Phase G-3 — doc-consistency sweep; RISKS R1/R5/R8 closed retroactively, R7 permanently deferred; 656 tests still passing)
+**Last session**: 2026-05-14 (Draco `.cscheck` round-trip tests; 670 tests passing)
 
 ## Phase status
 
 - [x] **Phase 0**: Scaffolding + per-phase docs
-- [x] **Phase A**: Foundation
+- [x] **Phase A**: Foundation                 (with leftover RealMesaFaultTrapThrower trap dispatch shipped post-merge as v2.0.1)
 - [x] **Phase B**: Opcodes + tests          (618 passing — fidelity gate cleared)
 - [x] **Phase C**: Engine completeness       (629 passing — 618 Phase B + 11 smoke)
-- [~] **Phase D**: Duchess agents             (12/14 — D-13/D-14 await Duchess disk artifacts)
-- [~] **Phase E**: Avalonia UI for Duchess    (12/12 coding sub-tasks; boot-to-login awaits Duchess disk)
-- [~] **Phase F**: Draco port                 (coding-complete; verification awaits Draco disk artifact)
-- [ ] **Phase G**: Polish                     ← active (CI + docs landed; benchmarks + AOT + merge pending)
+- [~] **Phase D**: Duchess agents             (coding-complete; D-13 Pilot/GlobalView boot + D-14 NetHub still await Duchess disk artifacts)
+- [~] **Phase E**: Avalonia UI for Duchess    (12/12 coding + post-merge letterbox fix; Duchess boot-to-login still awaits Duchess disk)
+- [x] **Phase F**: Draco port                 (coding-complete; interactive XDE 5.0 boot under Draco confirmed post-merge)
+- [x] **Phase G**: Polish                     (CI + benchmarks + MIGRATION docs + merge to master done; NativeAOT still optional)
+- [x] **Phase H**: Disk persistence            (.cscheck overlay + -merge for both emulators; 7+7 round-trip tests; 670 passing)
+- [x] **Tag**: v2.0.x + v2.1.x already shipped (v2.0.0 / v2.0.1 / v2.0.2 / v2.1.0 / v2.1.1 — all on origin)
+- [ ] **Future**: NativeAOT, R4 NetHub pcap diff, R6 Linux dead-key, raw-1.44 MiB floppy on Draco (all optional follow-ups)
 
 ## Phase B sub-tasks (closed for reference)
 
@@ -599,3 +602,129 @@ Recommendation: **(a)** — Phase G is conceptually done. Merging to master and 
 - **(b) HDisk read-only path + DracoHost orchestration (Phase F-4b)** — ~1100 LOC of HDisk + ~150 LOC of DracoHost.cs. Higher payoff: gets a Draco that can read a ViewPoint base image and start booting in Avalonia. Lower fidelity: write path is shadow-only (same compromise as `DiskAgent` Phase D-2; merged with the same DECISIONS.md §8 rationale).
 
 Recommendation: **(b)** — HDisk read + DracoHost is the critical-path to a visible boot. HFloppy isn't blocking the boot screen; it's blocking only the floppy-driven install/upgrade workflows. Get the Draco visibly booting first, then come back to HFloppy.
+
+### 2026-05-13 (Merge `csharp-port` → `master`; v2.0.0-csharp released)
+
+- **`csharp-port` merged into `master` via no-ff merge** (commit `184ece9`). 656/656 tests passing on master. The C# tree now lives alongside the original Java tree under `src/`; both build from the same repo. Java tooling stays untouched.
+- **Phase G's "merge to master" sub-task is now done** — only NativeAOT publish + interactive boot validation remain as Phase G open items, and both are best handled as follow-up PRs after the initial release.
+- **Phase 0 STARTING.md rule `Do not merge csharp-port into master until Phase G is complete` is now satisfied** — Phase G coding scope (CI, benchmarks, MIGRATION docs, RISKS reconciliation) was complete before the merge.
+- Subsequent work continues on `master` directly since the port is no longer feature-isolated.
+
+### 2026-05-13 (v2.0.1 — RealMesaFaultTrapThrower trap dispatch; Phase A leftover)
+
+- **The bug**: 18 `signalXxx` methods on `RealMesaFaultTrapThrower` were Phase A placeholders that threw `MesaERROR("requires Xfer (Phase C)")`. Phase C landed Xfer + Processes but never went back to fill these in; all 656 unit tests use `ChkThrower` (which records trap kinds without throwing through the placeholder), so coverage missed it. Interactive XDE 5.0 boot on Draco hit `Ch09.call → Xfer → Cpu.codeTrap` and crashed immediately.
+- **The fix** (commit `1d8c5fe`, +117/-24 in `csharp/Dwarf.Engine/Cpu.cs`): port the real implementations verbatim from `engine/Cpu.java:618-757`. Each trap routes through `Xfer.impl.xfer(controlLink, Cpu.LF, XferType.xtrap, false)` after reading `controlLink` from the System Data Table (SDT). Parameter delivery splits four ways:
+  - **trapZero**: no parameter (Bounds, Break, DivCheck, DivZero, Interrupt, Pointer, Process, Reschedule, Stack, Hardware)
+  - **trapOne**: 1-word at `LF[0]` (Code, Control, Opcode)
+  - **trapTwo**: 2-word at `LF[0..1]` (Unbound)
+  - **escOpcode**: special — uses the Escape Trap Table (ETT) instead of SDT, and writes the parameter AFTER the xfer (Java upstream semantics preserved)
+- Faults route through `Processes` (`faultOne` for FrameFault, `faultTwo` for Page/WriteProtect). All five paths throw `MesaAbort` to unwind the interpreter loop.
+- **Coverage gap (still open)**: `ChkThrower`-based unit tests can't exercise these paths. Closing it would require fault-injection tests that install `RealMesaFaultTrapThrower`; not done in this session.
+- Sample Draco config `disks-6085/xde5.0_2xTajo+hacks.properties` shipped alongside so anyone with the repo can reproduce the boot test.
+- **Verification**: `dotnet run -c Release -- -draco -gui disks-6085/xde5.0_2xTajo+hacks.properties` boots past the codeTrap; user-confirmed visual boot progression on Avalonia GUI. 656/656 tests still pass.
+
+### 2026-05-13 (Sample Draco configs for the 3 bundled 6085 disks + worked boot examples)
+
+- **No code changes; 656/656 tests still pass.** Documentation-only session that landed three runnable Draco configs (one shipped with v2.0.1, two new) plus boot-command tables in two readmes.
+- **`disks-6085/xde5.0.properties`** — original Bitsavers XDE 5.0 reference disk. Uses `labelOpOnRead=verify` (not `updateDisk`) since this is the fidelity-gate reference disk. Warns about Pilot 12.3 quirks and the Stop-button-only shutdown rule.
+- **`disks-6085/vp2.0.5.properties`** — ViewPoint 2.0.5. Pins `processorId` to `10-00-FE-31-AB-21` because the disk's Software Options entitlement is bound to that MAC. Documents the "bouncing-keyboard logoff sequence" as the only safe shutdown path.
+- **Root `readme.md`** C# port section gets a "Try the bundled 6085 disks immediately" block with three concrete `dotnet run` commands. Status updated to "released as v2.0.1-csharp ... interactive XDE 5.0 boot under Draco confirmed".
+- **`disks-6085/readme.md`** gets a new "Booting under the C# .NET 10 port" section with a per-disk table (recommended-first-boot / MAC-bound / use-with-care) and three dotnet run commands. Notes that per-disk shutdown rules apply identically to the C# port and that the C# port doesn't persist disk changes yet (in-memory shadow only) — this caveat motivated Phase H below.
+
+### 2026-05-13 (Phase H-1+H-2 — Draco .cscheck persistence)
+
+- **The motivation**: Phase F-4a's HDisk port intentionally dropped the Java upstream's DEFLATE delta encoder + `chunks[]` dirty-page bitmap (DECISIONS.md §8) and made writes go to RAM only. Interactive XDE 5.0 use surfaced the practical pain immediately — every boot is a fresh disk, every login throws away the previous session's setup. Phase H is the C#-native checkpoint format that closes the gap without bringing back the (signed-Java-int / big-endian / `.zdelta`-magic) on-disk format.
+- **Format `<name>.zdisk.cscheck`** (commit `7a8e49d`, `Dwarf.Iop6085/HDisk.cs`):
+  - `GZipStream` wrapper, **little-endian** (Java `.zdelta` is `InflaterInputStream` / big-endian — incompatible by design, so no accidental cross-reads)
+  - 16-byte header: `"DWCH"` magic (`0x48435744 LE`) + `version=1` + `flags` (bit 0: 1=Draco/zdisk, 0=Duchess/raw) + `sectorCount` (sanity check) + `changedSectorCount`
+  - Per dirty sector: 4-byte `linearSectorIndex` + 532 bytes (10 label words + 256 data words, little-endian)
+- **H-1 — dirty tracking**: `bool[] sectorsChanged` on `DiskFile`, marked in `writeSectorData` / `writeSectorLabel` / `writeSectorLabelAndDataRaw`. Mirrors the Java upstream's `chunks[]` that was dropped in Phase F-4a.
+- **H-2 — persistence**: `saveDisk()` writes a `.cscheck` via temp file + atomic rename. The constructor calls `tryApplyCheckpoint` after the base read. Rotation archives the prior checkpoint with a `yyyy.MM.dd_HH.mm.ss.fff` timestamp suffix; old archives beyond `deltasToKeep` are deleted.
+- **Cumulative semantics**: a sector marked dirty by an applied checkpoint stays dirty for future saves, so each `.cscheck` contains the full delta from the base. No multi-file fan-in needed at read time — simpler than Java's `.zdelta` stacking.
+- **Corrupted / wrong-format `.cscheck`**: log + skip + run from base only. No crashes.
+- **656/656 tests still pass** — none of them exercise the disk write path, which is the underlying coverage gap. H-6 closes that gap for Duchess.
+
+### 2026-05-13 (Phase H-3+H-4 — Duchess .cscheck + -merge for both emulators)
+
+- **H-3 — Duchess variant** (commit `5cbbfd7`, `Dwarf.Agents/DiskAgent.cs`): mirrors H-1+H-2 for the Duchess `.dsk` path. Same `.cscheck` format, only flag bit 0 differs (=0 for Duchess/raw). Adds `bool[] pagesChanged` (one bit per `WORDS_PER_PAGE` page; set in `writePage`). `saveDisk()` writes a `.cscheck` overlay alongside the `.dsk`. Constructor calls `tryApplyCheckpoint` after the base load. The Phase D-2 `deltasToKeep` ctor arg (previously accepted-but-ignored) is now wired in.
+- **H-4 — `-merge` mode for both emulators**: new per-`DiskFile` method `mergeCheckpointToBase` (Draco) / `mergeDelta` (Duchess, reusing the existing Java-named method). Steps:
+  1. Write in-memory state as a new `.zdisk`/`.dsk` to a temp file
+  2. Archive the prior base + `.cscheck` + rotated `.cscheck-*` into a timestamped `.zip` alongside the disk via `System.IO.Compression.ZipArchive`
+  3. Atomic rename temp → final
+  4. Delete `.cscheck` + rotated archives (preserved inside the zip)
+  5. Clear dirty flags — the in-memory state is the new base
+- **Format-specific writers**:
+  - **Draco `writeFullBase`**: zlib-compressed, big-endian, 6-word header followed by 122,880 sector entries (each: dbl-word index + 266 words). Identical format to a Java-produced `.zdisk` — fully reverse-compatible.
+  - **Duchess `writeFullBase`**: raw bytes, byte-order preserved from the source file (`externalByteSwapped` flag).
+- **Wired into `Dwarf.Cli`** via the existing `-merge` flag for both emulators (paths exist in `Duchess.Main` and `DracoHost.Main`).
+- **656/656 tests still pass** after H-3+H-4.
+
+### 2026-05-13 (Phase H-5+H-6 — MIGRATION + DECISIONS doc updates; round-trip tests; 663 passing)
+
+- **All 663 tests passing** (656 baseline + 7 new Duchess `.cscheck` round-trip tests).
+- **H-5 — docs** (commit `75bc8f9`):
+  - **`csharp/MIGRATION.md`**: full rewrite. Top-of-file claim "migration is one-way" → "migration is reversible as of v2.1.0-csharp". Adds per-emulator `-merge` flow documentation. Disk format compatibility table updated: base disks are bidirectionally compatible; only the overlay formats differ. New section: ".cscheck format spec" with the full header + entry layout.
+  - **`csharp/docs/DECISIONS.md §8`**: title changed from "Disk format — not ported" to "Disk format — base shared, overlay reformatted". Adds a Phase H amendment paragraph + comparison table (`.zdelta` vs `.cscheck`). Notes that round-trip migration works in both directions via `-merge`.
+- **H-6 — round-trip tests**: new `csharp/Dwarf.Tests/DiskCheckpointTests.cs` with 7 tests for the Duchess `.dsk` + `.cscheck` round-trip:
+  1. `roundtrip_writes_and_reads_back` — writes two known pages, re-opens, confirms readback
+  2. `no_dirty_pages_skips_writing` — clean shutdown should not write a `.cscheck`
+  3. `readonly_disk_returns_readonly_state` — readonly flag returns the expected state
+  4. `rotation_archives_prior_then_prunes` — rotation respects `deltasToKeep`
+  5. `cumulative_writes_across_sessions` — sequential writes accumulate in the checkpoint
+  6. `corrupted_checkpoint_is_skipped` — boot still succeeds when `.cscheck` is invalid
+  7. `merge_writes_new_base_and_archives_old_files` — `-merge` produces clean base + zip
+- Tests synthesize a minimal 1-cylinder Duchess `.dsk` (~96 KB) in a temp dir; cleanup via `IDisposable`. Use `[InternalsVisibleTo]` so tests poke at `DiskFile.content` / `pagesChanged` directly, bypassing the `Mem`-mediated `writePage` / `readPage` path. Added `InternalsVisibleTo("Dwarf.Tests")` to `Dwarf.Agents.csproj`; added `Dwarf.Agents` project reference to `Dwarf.Tests.csproj`.
+- **Test-driven bug fix found during H-6**: `tryApplyCheckpoint` originally caught only `IOException`. `GZipStream` throws `InvalidDataException` for malformed input (not derived from `IOException`). Test #6 (corrupted checkpoint) crashed because the Inflater's "invalid header magic" exception escaped. Widened the catch to `IOException | InvalidDataException` in both Duchess and Draco `DiskFile` classes. Now corrupted overlays are logged + skipped; boot succeeds from base.
+- **Draco round-trip tests not yet added** — the `.zdisk` variant of the same format is structurally identical (only flag bit 0 differs). End-to-end Draco validation was performed manually by user-confirmed XDE 5.0 boot earlier in this session. A future PR can add equivalent Draco round-trip tests with a synthetic 40-cylinder `.zdisk` (~340 KB).
+
+### 2026-05-13 (Post-H — Avalonia letterbox aspect-preserving display; mouse-coord alignment)
+
+- **No new tests; 663 tests still pass.** Pure UI bug-fix surfaced during interactive XDE use after Phase H landed.
+- **The bug**: `DisplayControl.Render` was stretching the engine bitmap to the full control bounds. Resizing the window away from the bitmap's 4:3 aspect ratio (e.g., dragging the window wider) distorted the display. Worse, `MouseHandler.MapPointerToMesa` was using the same stretched coordinate space, so the mesa pointer drifted off the visible content — by the bottom-right corner of a wider-than-4:3 window, the mesa cursor was clamped well past the right edge of the bitmap.
+- **The fix** (commit `8c4b714`, +62/-7):
+  - `DisplayControl` now computes the largest aspect-preserving rect that fits inside its bounds and draws the bitmap into that rect, with bars filling the remaining margin (top/bottom or left/right depending on which dimension is the binding constraint).
+  - `MouseHandler` reads the same letterbox rect to translate Avalonia pointer DIPs into mesa pixel coordinates. Pointer positions inside the letterbox map linearly to mesa pixels; positions over the bars clamp to the nearest bitmap edge.
+- The letterbox rect is computed in both classes from the same `Source.Width` / `Source.Height` + control bounds — no shared cache, but the math is small enough that a brief recompute on each render/pointer-event is cheaper than threading state through.
+
+### Where we stand (2026-05-13 end of session)
+
+- **Build**: green (0 warnings, 0 errors).
+- **Tests**: 663/663 passing.
+- **C# port shipped**: master tip includes Phase 0–H + 2 post-H fixes (trap dispatch, letterbox).
+- **Versions cut so far**: v2.0.0-csharp (initial merge), v2.0.1-csharp (trap dispatch + sample configs). v2.1.0-csharp tag pending — MIGRATION.md already references it as the persistence-enabled release.
+- **Open work (not blocking release)**:
+  - Tag `v2.1.0-csharp` (next session)
+  - Draco-side `.cscheck` round-trip tests (mirrors the 7 Duchess tests; ~1 hr; `Phase H-6` follow-up)
+  - NativeAOT publish (Phase G optional; ~30-60 min)
+  - RISKS R4 (NetHub wire-protocol pcap diff) — surfaces during XNS-networked workflows
+  - RISKS R6 (Linux dead-key) — awaits interactive Linux testing
+- **Next session pick-up**:
+  - **(a) Tag v2.1.0-csharp** — closes the "tag pending" item. Quick + low-risk; requires user authorization to push the tag.
+  - **(b) Draco `.cscheck` round-trip tests** — adds 6-7 tests mirroring `DiskCheckpointTests` with a synthetic `.zdisk` fixture. Closes the H-6 coverage asymmetry.
+  - **(c) NativeAOT publish** — `<PublishAot>true</PublishAot>` + verify Avalonia 11 + explicit-registration opcode dispatch survive trimming. Phase G optional.
+  - **(d) R4 NetHub pcap diff** — needs Java Dwarf + C# Dwarf side-by-side against the same NetHub. Real-world testing, not coding.
+
+### 2026-05-14 (Discovery: tags v2.0.0–v2.1.1 already on origin; Draco `.cscheck` round-trip tests added)
+
+- **Stale-doc reconciliation**: `git ls-remote --tags origin` shows v2.0.0-csharp, v2.0.1-csharp, **v2.0.2-csharp**, **v2.1.0-csharp**, and **v2.1.1-csharp** all already pushed. The 2026-05-13 PROGRESS.md said "v2.1.0-csharp tag pending" — that was stale even then. Five annotated tags with proper release notes are live; nothing to push. v2.1.1-csharp ships the letterbox fix.
+- **`DiskCheckpointDracoTests.cs` (~280 LOC; 7 tests)** — closes the H-6 coverage asymmetry. Mirrors the 7 Duchess tests for `HDisk.DiskFile`:
+  1. `draco_checkpoint_roundtrip_writes_and_reads_back` — sectors 5 + 137, label + data patterns
+  2. `draco_no_dirty_sectors_skips_writing_checkpoint`
+  3. `draco_readonly_disk_returns_false_and_writes_nothing`
+  4. `draco_checkpoint_rotation_archives_prior_then_prunes` — keepCount=2 across 3 saves
+  5. `draco_cumulative_writes_across_sessions` — sectors 5 + 9
+  6. `draco_corrupted_checkpoint_is_skipped_disk_still_loads` — same `InvalidDataException` path validated for Draco
+  7. `draco_merge_writes_new_base_and_archives_old_files`
+- **`makeSyntheticDracoZdisk` helper** synthesizes a minimal valid `.zdisk`: 40 cyl × 12 head × 16 sector = 7680 sectors, zlib-compressed big-endian, 6-word header (`0xDAAD`, heads, cyls, sectCount_hi, sectCount_lo, `0x5CC5`). All-zero label+data per sector compresses to ~7 KB. Lives in `[Path.GetTempPath()]/dwarf-dracodisktest-<guid>/synth.zdisk`; cleanup via `IDisposable`.
+- **Access-control plumbing** to reach `DiskFile` from `Dwarf.Tests`:
+  - `HDisk.DiskFile`: `private sealed class` → `internal sealed class`
+  - `HDisk.DiskFile.sectors` / `sectorsChanged` / `changed`: `private` → `internal`
+  - `HDisk.DiskAddress`, `ByteSwappedDiskAddress`, `CDF_Label`: `private sealed class` → `internal sealed class` (CS0051: public methods on the now-internal `DiskFile` can't take less-accessible parameter types)
+  - `Dwarf.Iop6085.csproj`: `<InternalsVisibleTo Include="Dwarf.Tests" />`
+  - `Dwarf.Tests.csproj`: `<ProjectReference Include="..\Dwarf.Iop6085\Dwarf.Iop6085.csproj" />`
+- **Test interface differences from Duchess version** (audit notes for future-me):
+  - `HDisk.DiskFile.saveDisk` takes `StringBuilder errors` and returns `bool` (Duchess `DiskAgent.DiskFile.saveDisk` returns `DiskState` with no arg).
+  - `HDisk.DiskFile.changed` is a separate field that must be set in addition to flipping `sectorsChanged[i]` (Duchess saveDisk derives "changed" from `pagesChanged[]` directly).
+  - Sectors are 266 words (10 label + 256 data), not 256 — tests poke `sectors[i][w]` directly rather than `content[pageIdx * WORDS_PER_PAGE + w]`.
+- **All 670 tests pass** (663 baseline + 7 new). No new analyzer suppressions. Build 0/0.
+- **PROGRESS.md previously claimed `v2.1.0-csharp tag pending`** — corrected this session; the tag was already on origin pointing at the H-5+H-6 commit.

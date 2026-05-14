@@ -249,7 +249,7 @@ public class HDisk : DeviceHandler
      * Input Output Control Block
      */
 
-    private sealed class DiskAddress : IOStruct
+    internal sealed class DiskAddress : IOStruct
     {
         public readonly Word cylinder;
         public readonly Word headAndSector;
@@ -267,7 +267,7 @@ public class HDisk : DeviceHandler
         }
     }
 
-    private sealed class ByteSwappedDiskAddress : IOStruct
+    internal sealed class ByteSwappedDiskAddress : IOStruct
     {
         public readonly Word cylinder;
         public readonly Word sectorAndHead;
@@ -424,7 +424,7 @@ public class HDisk : DeviceHandler
         _ => "invalid(" + op + ")",
     };
 
-    private sealed class CDF_Label : IOStruct
+    internal sealed class CDF_Label : IOStruct
     {
         public readonly Word fileID_0;
         public readonly Word fileID_1;
@@ -1368,7 +1368,7 @@ public class HDisk : DeviceHandler
         public DiskFileCorrupted(string msg) : base(msg) { }
     }
 
-    private sealed class DiskFile
+    internal sealed class DiskFile
     {
         // structure of an externally stored disk file:
         // - header: 6 words (#cylinder/#heads/16 <-> #totalSectorCount must match!):
@@ -1430,16 +1430,21 @@ public class HDisk : DeviceHandler
         // (Java upstream accesses `disk.sectorsPerTrack` — keep that access pattern available)
         public int sectorsPerTrack_inst => sectorsPerTrack;
 
-        // disk content
-        private readonly ushort[][] sectors; // for each sector: label + data
+        // disk content. `internal` so round-trip tests in Dwarf.Tests can
+        // synthesize and verify content directly without going through the
+        // Mem-mediated writeSectorData / readSector path. Same pattern as
+        // DiskAgent.DiskFile.content for the Duchess variant (Phase H-6).
+        internal readonly ushort[][] sectors; // for each sector: label + data
 
         // Per-sector dirty flags. Cumulative since the base was loaded —
         // includes both this-session writes and sectors restored from a
         // .cscheck overlay at boot. saveCheckpoint writes every sector
-        // whose flag is true.
-        private readonly bool[] sectorsChanged;
+        // whose flag is true. `internal` for the same reason as `sectors`.
+        internal readonly bool[] sectorsChanged;
 
-        private bool changed = false; // has the disk been changed at all? (any sectorsChanged[] bit set)
+        // has the disk been changed at all? (any sectorsChanged[] bit set).
+        // `internal` so tests can set it after manually poking sectorsChanged.
+        internal bool changed = false;
 
         // temp sector content buffer for persistence i/o
         private readonly byte[] sectorBuffer = new byte[wordsPerSector * 2];

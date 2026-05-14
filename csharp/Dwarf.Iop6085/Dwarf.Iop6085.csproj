@@ -14,4 +14,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Phase H follow-up: Draco .cscheck round-trip tests poke at
+         HDisk.DiskFile.sectors / sectorsChanged / changed directly.
+         Mirrors the Dwarf.Agents InternalsVisibleTo from Phase H-6. -->
+    <InternalsVisibleTo Include="Dwarf.Tests" />
+  </ItemGroup>
+
 </Project>
