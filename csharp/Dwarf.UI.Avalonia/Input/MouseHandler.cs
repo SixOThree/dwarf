@@ -27,6 +27,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 using Avalonia.Input;
 using Dwarf.Engine;
+using Dwarf.UI.Avalonia.Controls;
 using AvVisual = global::Avalonia.Visual;
 
 namespace Dwarf.UI.Avalonia.Input;
@@ -90,9 +91,22 @@ public sealed class MouseHandler
 
     private void HandleNewMousePosition(PointerEventArgs e)
     {
-        var pt = e.GetPosition((AvVisual)e.Source!);
-        int newX = (int)Math.Min(Math.Max(0.0, pt.X), _maxX);
-        int newY = (int)Math.Min(Math.Max(0.0, pt.Y), _maxY);
+        // MouseHandler is only ever attached to a DisplayControl (see
+        // MainWindow). DisplayControl has no children, so e.Source IS the
+        // control — cast directly so we can ask it for its image rect.
+        var display = (DisplayControl)e.Source!;
+        var pt = e.GetPosition(display);
+        var imgRect = display.GetImageRect();
+
+        // DisplayControl letterboxes the bitmap inside its bounds; translate
+        // pointer DIPs → image-rect-local → mesa pixel coordinates.
+        double localX = pt.X - imgRect.X;
+        double localY = pt.Y - imgRect.Y;
+        double scaleX = imgRect.Width > 0.0 ? (_maxX + 1.0) / imgRect.Width : 1.0;
+        double scaleY = imgRect.Height > 0.0 ? (_maxY + 1.0) / imgRect.Height : 1.0;
+
+        int newX = (int)Math.Min(Math.Max(0.0, localX * scaleX), _maxX);
+        int newY = (int)Math.Min(Math.Max(0.0, localY * scaleY), _maxY);
 
         if (_lastX != newX || _lastY != newY)
         {
